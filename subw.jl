@@ -44,9 +44,6 @@ mutable struct Hypergraph{T}
         edges = map(edge -> Set{T}(edge), edges)
         shuffle!(tds)
         tds = tds[1:min(length(tds), 6)]
-        for td in tds
-            println(td)
-        end
         return new{T}(vars, edges, weights, tds, var_index)
     end
 end
@@ -429,10 +426,10 @@ end
 
 # H = Hypergraph(
 #     [1, 2, 3, 4],
-#     [[1, 2], [2, 3], [3, 4], [4, 1]],
-#     [[Set([1, 2, 3]), Set([1, 4, 3])], [Set([2, 3, 4]), Set([4, 1, 2])]]
+#     [[1, 2], [2, 3], [3, 4], [4, 1]]
 # )
 
+# println(fractional_hypertree_width(H))
 # println(submodular_width(H))
 
 # H2 = Hypergraph(
@@ -455,15 +452,15 @@ end
 
 # println(submodular_width(H3))
 
-H4 = Hypergraph(
-    [1, 2, 3, 4, 5, 6, 7, 8],
-    [
-        [1, 3], [1, 4], [1, 5], [2, 3], [2, 4], [2, 5], [3, 6], [3, 7], [4, 6], [4, 8],
-        [5, 7], [5, 8]
-    ],
-)
-println(fractional_hypertree_width(H4))
-println(submodular_width(H4))
+# H4 = Hypergraph(
+#     [1, 2, 3, 4, 5, 6, 7, 8],
+#     [
+#         [1, 3], [1, 4], [1, 5], [2, 3], [2, 4], [2, 5], [3, 6], [3, 7], [4, 6], [4, 8],
+#         [5, 7], [5, 8]
+#     ],
+# )
+# println(fractional_hypertree_width(H4))
+# println(submodular_width(H4))
 
 # H5 = Hypergraph(
 #     [1, 2, 3, 4, 5, 6, 7, 8 ,9, 10, 11, 12],
@@ -542,5 +539,44 @@ println(submodular_width(H4))
 
 # # println(fractional_hypertree_width(HC))
 # println(submodular_width(HC))
+
+function get_multivariate_extension(H::Hypergraph{T}, extras::Vector{T}) where T
+    @assert isempty(extras ∩ H.vars) && length(extras) == length(H.edges)
+    m = length(H.edges)
+    E = Hypergraph{T}[]
+    for p in permutations(1:m)
+        edges = deepcopy(H.edges)
+        for (i, k) in enumerate(p)
+            union!(edges[k], extras[1:i])
+        end
+        edges = map(edge -> collect(edge), edges)
+        push!(E, Hypergraph(H.vars ∪ extras, edges))
+    end
+    return E
+end
+
+function fractional_hypertree_width(E::Vector{Hypergraph{T}}) where T
+    return maximum(fractional_hypertree_width(H) for H in E; init = 0.0)
+end
+
+# H = Hypergraph(
+#     [1, 2, 3, 4],
+#     [[1, 2, 3], [2, 3, 4], [3, 4, 1], [4, 1, 2]],
+# )
+
+# E = get_multivariate_extension(H, [-1, -2, -3, -4])
+# println(fractional_hypertree_width(H))
+# println(fractional_hypertree_width(E))
+
+
+# 4-cycle
+H = Hypergraph(
+    [:A, :B, :C, :D, :E],
+    [[:A], [:A, :B], [:B, :C], [:C, :D], [:D]],
+)
+
+E = get_multivariate_extension(H, [:Z1, :Z2, :Z3, :Z4, :Z5])
+println(fractional_hypertree_width(H))
+println(fractional_hypertree_width(E))
 
 end
