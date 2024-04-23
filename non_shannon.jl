@@ -93,21 +93,52 @@ function add_basic_submodularities!(ec::EntropyConstraints, V::Var)
     end
 end
 
-function add_basic_monotonicities!(ec::EntropyConstraints, V::Var)
+function add_basic_monotonicities!(
+    ec::EntropyConstraints, V::Var; include_strictness::Bool = false
+)
     for x ∈ sort(collect(V))
         add_constraint!(ec, monotonicity(setdiff(V, Set((x,))), Set((x,))))
     end
-    # add_constraint!(ec, Sum(Var() => 1.0,))
+    include_strictness && add_constraint!(ec, Sum(Var() => 1.0,))
 end
 
 function add_strictness!(ec::EntropyConstraints)
     add_constraint!(ec, strictness())
 end
 
-function add_basic_shannon!(ec::EntropyConstraints, V::Var)
+function add_basic_shannon!(
+    ec::EntropyConstraints, V::Var; include_strictness::Bool = false
+)
     add_basic_submodularities!(ec, V)
-    add_basic_monotonicities!(ec, V)
-    # add_strictness!(ec)
+    add_basic_monotonicities!(ec, V; include_strictness)
+    include_strictness && add_strictness!(ec)
+end
+
+function add_copy_lemma!(
+    ec::EntropyConstraints, X::Var, Y1::Vector{Symbol}, Y2::Vector{Symbol}
+)
+    @assert length(Y1) == length(Y2) == length(Set(Y1)) == length(Set(Y2))
+    @assert isempty(X ∩ Y1) && isempty(X ∩ Y2) && isempty(Y1 ∩ Y2)
+    f = Dict(y1 => Y2[i] for (i, y1) ∈ enumerate(Y1))
+    V1 = sort(collect(X ∪ Y1))
+    for W1 ∈ powerset(V1)
+        W1 ⊆ X && continue
+        W2 = (get(f, x, x) for x ∈ W1)
+        add_constraint!(ec, Sum(
+            Set(W1) => 1.0,
+            Set(W2) => -1.0,
+        ))
+        add_constraint!(ec, Sum(
+            Set(W2) => 1.0,
+            Set(W1) => -1.0,
+        ))
+    end
+    add_constraint!(ec, Sum(
+        Set(Y1 ∪ X) => -1.0,
+        Set(Y2 ∪ X) => -1.0,
+        Set(X ∪ Y1 ∪ Y2) => 1.0,
+        X => 1.0,
+    ))
 end
 
 function solve(A, b)
@@ -164,22 +195,34 @@ function add_I!(s::Sum, c::Float64, X::Var, Y::Var, Z::Var)
     s[W] = get(s, W, 0.0) - c
 end
 
+# -------------------------------------------
+
+# ec = EntropyConstraints()
+# V = Set([:A, :B, :C])
+# add_basic_shannon!(ec, V; include_strictness = true)
+
+# s = Sum()
+# add_h!(s, 1.0, Set([:A, :B]))
+# add_h!(s, 1.0, Set([:B, :C]))
+# add_h!(s, 1.0, Set([:A, :C]))
+# add_h!(s, -2.0, Set([:A, :B, :C]))
+
+# express_constraint(ec, s)
+
+# -------------------------------------------
+
 ec = EntropyConstraints()
-V = Set([:A, :B, :C])
-add_basic_shannon!(ec, V)
-
+add_basic_shannon!(ec, Set([:X, :Y, :A, :B, :A2, :B2]))
+add_copy_lemma!(ec, Set(Symbol[:X, :Y]), [:A, :B], [:A2, :B2])
 s = Sum()
-add_h!(s, 1.0, Set([:A, :B]))
-add_h!(s, 1.0, Set([:B, :C]))
-add_h!(s, 1.0, Set([:A, :C]))
-add_h!(s, -2.0, Set([:A, :B, :C]))
-
+add_I!(s, 2.0, Set([:X]), Set([:Y]), Set([:A]))
+add_I!(s, 1.0, Set([:X]), Set([:Y]), Set([:B]))
+add_I!(s, 1.0, Set([:A]), Set([:B]), Set(Symbol[]))
+add_I!(s, 1.0, Set([:A]), Set([:Y]), Set([:X]))
+add_I!(s, 1.0, Set([:A]), Set([:X]), Set([:Y]))
+add_I!(s, -1.0, Set([:X]), Set([:Y]), Set(Symbol[]))
 express_constraint(ec, s)
 
-# target = Dict(
-#     Set(Symbol[:A]) => 1.0,
-# )
-
-# express_constraint(ec, target)
+# -------------------------------------------
 
 end
