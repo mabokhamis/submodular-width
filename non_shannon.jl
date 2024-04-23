@@ -211,18 +211,41 @@ end
 
 # -------------------------------------------
 
-ec = EntropyConstraints()
-add_basic_shannon!(ec, Set([:X, :Y, :A, :B, :A2, :B2]))
-add_copy_lemma!(ec, Set(Symbol[:X, :Y]), [:A, :B], [:A2, :B2])
-s = Sum()
-add_I!(s, 2.0, Set([:X]), Set([:Y]), Set([:A]))
-add_I!(s, 1.0, Set([:X]), Set([:Y]), Set([:B]))
-add_I!(s, 1.0, Set([:A]), Set([:B]), Set(Symbol[]))
-add_I!(s, 1.0, Set([:A]), Set([:Y]), Set([:X]))
-add_I!(s, 1.0, Set([:A]), Set([:X]), Set([:Y]))
-add_I!(s, -1.0, Set([:X]), Set([:Y]), Set(Symbol[]))
-express_constraint(ec, s)
+# ec = EntropyConstraints()
+# add_basic_submodularities!(ec, Set([:X, :Y, :A, :B, :A2, :B2]))
+# add_copy_lemma!(ec, Set(Symbol[:X, :Y]), [:A, :B], [:A2, :B2])
+# s = Sum()
+# add_I!(s, 2.0, Set([:X]), Set([:Y]), Set([:A]))
+# add_I!(s, 1.0, Set([:X]), Set([:Y]), Set([:B]))
+# add_I!(s, 1.0, Set([:A]), Set([:B]), Set(Symbol[]))
+# add_I!(s, 1.0, Set([:A]), Set([:Y]), Set([:X]))
+# add_I!(s, 1.0, Set([:A]), Set([:X]), Set([:Y]))
+# add_I!(s, -1.0, Set([:X]), Set([:Y]), Set(Symbol[]))
+# express_constraint(ec, s)
 
 # -------------------------------------------
+
+ec = EntropyConstraints()
+add_basic_shannon!(ec, Set([:X, :Y, :C, :A, :B, :A2, :B2]))
+add_copy_lemma!(ec, Set(Symbol[:X, :Y, :C]), [:A, :B], [:A2, :B2])
+s = Sum()
+
+add_h!(s, -11.0, Set([:A, :B, :X, :Y, :C]))
+
+add_h!(s, 3.0, Set([:X, :Y]))
+add_h!(s, 3.0, Set([:A, :X]))
+add_h!(s, 3.0, Set([:A, :Y]))
+add_h!(s, 1.0, Set([:B, :X]))
+add_h!(s, 1.0, Set([:B, :Y]))
+add_h!(s, 5.0, Set([:C]))
+
+add_h!(s, 1.0, Set([:A, :B, :X, :Y, :C]), Set([:A, :B]))
+add_h!(s, 4.0, Set([:A, :B, :X, :Y, :C]), Set([:A, :X, :Y]))
+add_h!(s, 1.0, Set([:A, :B, :X, :Y, :C]), Set([:B, :X, :Y]))
+
+add_h!(s, 1.0, Set([:A, :B, :X, :Y, :C]), Set([:A, :C]))
+add_h!(s, 2.0, Set([:A, :B, :X, :Y, :C]), Set([:X, :C]))
+add_h!(s, 2.0, Set([:A, :B, :X, :Y, :C]), Set([:Y, :C]))
+express_constraint(ec, s)
 
 end
