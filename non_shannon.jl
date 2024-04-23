@@ -226,8 +226,8 @@ end
 # -------------------------------------------
 
 ec = EntropyConstraints()
-add_basic_shannon!(ec, Set([:X, :Y, :C, :A, :B, :A2, :B2]))
-add_copy_lemma!(ec, Set(Symbol[:X, :Y, :C]), [:A, :B], [:A2, :B2])
+add_basic_submodularities!(ec, Set([:X, :Y, :C, :A, :B, :A2, :B2]))
+add_copy_lemma!(ec, Set(Symbol[:X, :Y]), [:A, :B], [:A2, :B2])
 s = Sum()
 
 add_h!(s, -11.0, Set([:A, :B, :X, :Y, :C]))
