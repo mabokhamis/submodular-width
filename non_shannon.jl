@@ -44,7 +44,7 @@ function to_string(Z::Var)
 end
 
 function to_string(s::Sum)
-    vars = sort(collect(s); by = x -> (last(x) > 0, length(first(x)), to_string(first(x))))
+    vars = sort(collect(s); by = x -> (last(x) < 0, length(first(x)), to_string(first(x))))
 
     function coef(a)
         return if a == 1.0
@@ -67,20 +67,55 @@ function submodularity(X::Var, Y::Var)
         Y => 1.0,
         X ∩ Y => -1.0,
         X ∪ Y => -1.0,
-
     )
 end
 
+function monotonicity(X::Var, Y::Var)
+    return Sum(
+        X ∪ Y => 1.0,
+        X => -1.0,
+    )
+end
+
+function strictness()
+    return Sum(Set(Symbol[]) => -1.0,)
+end
+
 function add_basic_submodularities!(ec::EntropyConstraints, V::Var)
-    for Z ∈ powerset(sort(collect(V)))
-        W = collect(setdiff(V, Z))
+    V = sort(collect(V))
+    for Z ∈ powerset(V)
+        W = setdiff(V, Z)
         for (i, x) ∈ enumerate(W), (j, y) ∈ enumerate(W)
             if i < j
-                c = submodularity(Set([Z; x]), Set([Z; y]))
-                add_constraint!(ec, c)
+                add_constraint!(ec, submodularity(Set([Z; x]), Set([Z; y])))
             end
         end
     end
+end
+
+function add_basic_monotonicities!(ec::EntropyConstraints, V::Var)
+    for x ∈ sort(collect(V))
+        add_constraint!(ec, monotonicity(setdiff(V, Set((x,))), Set((x,))))
+    end
+    add_constraint!(ec, Sum(Set(Symbol[]) => 1.0,))
+end
+
+function add_strictness!(ec::EntropyConstraints)
+    add_constraint!(ec, strictness())
+end
+
+function solve(A, b)
+    model = Model(Clp.Optimizer)
+    set_optimizer_attribute(model, "LogLevel", 0)
+    @variable(model, x[1:size(A, 2)] >= 0)
+    @constraint(model, A * x >= b)
+    @objective(model, Min, sum(A * x))
+    optimize!(model)
+    obj = objective_value(model)
+    if obj - sum(b) > 1e-8
+        error("Infeasible")
+    end
+    return value.(x)
 end
 
 function express_constraint(ec::EntropyConstraints, sum::Sum)
@@ -99,22 +134,34 @@ function express_constraint(ec::EntropyConstraints, sum::Sum)
         i = ec.var_index[v]
         b[i] = a
     end
-    x = pinv(A) * b
-    println(A*x - b)
+    x = solve(A, b)
     for (i, v) ∈ enumerate(x)
-        abs(v) < 1e-6 && continue
+        abs(v) < 1e-8 && continue
         println("$v * ($(to_string(ec.constraints[i])))")
     end
 end
 
 ec = EntropyConstraints()
-add_basic_submodularities!(ec, Set([:A, :B, :C]))
+V = Set([:A, :B, :C])
+add_basic_submodularities!(ec, V)
+add_basic_monotonicities!(ec, V)
+add_strictness!(ec)
+
+for c in ec.constraints
+    println(to_string(c))
+end
+
+# target = Dict(
+#     Set([:A, :B]) => 1.0,
+#     Set([:A, :C]) => 1.0,
+#     Set([:B, :C]) => 1.0,
+#     Set([:A, :B, :C]) => -2.0,
+# )
+
+# express_constraint(ec, target)
+
 target = Dict(
-    Set([:A, :B]) => 1.0,
-    Set([:A, :C]) => 1.0,
-    Set([:B, :C]) => 1.0,
-    Set([:A, :B, :C]) => -2.0,
-    Set(Symbol[]) => -1.0,
+    Set(Symbol[:A]) => 1.0,
 )
 
 express_constraint(ec, target)
