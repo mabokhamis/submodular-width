@@ -78,7 +78,7 @@ function monotonicity(X::Var, Y::Var)
 end
 
 function strictness()
-    return Sum(Set(Symbol[]) => -1.0,)
+    return Sum(Var() => -1.0,)
 end
 
 function add_basic_submodularities!(ec::EntropyConstraints, V::Var)
@@ -97,11 +97,17 @@ function add_basic_monotonicities!(ec::EntropyConstraints, V::Var)
     for x ∈ sort(collect(V))
         add_constraint!(ec, monotonicity(setdiff(V, Set((x,))), Set((x,))))
     end
-    add_constraint!(ec, Sum(Set(Symbol[]) => 1.0,))
+    # add_constraint!(ec, Sum(Var() => 1.0,))
 end
 
 function add_strictness!(ec::EntropyConstraints)
     add_constraint!(ec, strictness())
+end
+
+function add_basic_shannon!(ec::EntropyConstraints, V::Var)
+    add_basic_submodularities!(ec, V)
+    add_basic_monotonicities!(ec, V)
+    # add_strictness!(ec)
 end
 
 function solve(A, b)
@@ -132,6 +138,7 @@ function express_constraint(ec::EntropyConstraints, sum::Sum)
     b = zeros(n)
     for (v, a) ∈ sum
         i = ec.var_index[v]
+        @assert b[i] == 0.0
         b[i] = a
     end
     x = solve(A, b)
@@ -141,29 +148,38 @@ function express_constraint(ec::EntropyConstraints, sum::Sum)
     end
 end
 
-ec = EntropyConstraints()
-V = Set([:A, :B, :C])
-add_basic_submodularities!(ec, V)
-add_basic_monotonicities!(ec, V)
-add_strictness!(ec)
-
-for c in ec.constraints
-    println(to_string(c))
+function add_h!(s::Sum, c::Float64, Y::Var, X::Var = Var())
+    Y = Y ∪ X
+    s[X] = get(s, X, 0.0) - c
+    s[Y] = get(s, Y, 0.0) + c
 end
 
+function add_I!(s::Sum, c::Float64, X::Var, Y::Var, Z::Var)
+    X = Z ∪ X
+    Y = Z ∪ Y
+    W = X ∪ Y
+    s[X] = get(s, X, 0.0) + c
+    s[Y] = get(s, Y, 0.0) + c
+    s[Z] = get(s, Z, 0.0) - c
+    s[W] = get(s, W, 0.0) - c
+end
+
+ec = EntropyConstraints()
+V = Set([:A, :B, :C])
+add_basic_shannon!(ec, V)
+
+s = Sum()
+add_h!(s, 1.0, Set([:A, :B]))
+add_h!(s, 1.0, Set([:B, :C]))
+add_h!(s, 1.0, Set([:A, :C]))
+add_h!(s, -2.0, Set([:A, :B, :C]))
+
+express_constraint(ec, s)
+
 # target = Dict(
-#     Set([:A, :B]) => 1.0,
-#     Set([:A, :C]) => 1.0,
-#     Set([:B, :C]) => 1.0,
-#     Set([:A, :B, :C]) => -2.0,
+#     Set(Symbol[:A]) => 1.0,
 # )
 
 # express_constraint(ec, target)
-
-target = Dict(
-    Set(Symbol[:A]) => 1.0,
-)
-
-express_constraint(ec, target)
 
 end
