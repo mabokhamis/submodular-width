@@ -15,13 +15,20 @@ using LinearAlgebra
 const Var = Set{Symbol}
 const Sum = Dict{Var,Float64}
 
+@enum TermType submodularity monotonicity strictness copy_term conditional_independence conditional
+
+struct Term
+    type::TermType
+    sum::Sum
+end
+
 mutable struct EntropyConstraints
     vars::Vector{Var}
     var_index::Dict{Var,Int}
-    constraints::Vector{Sum}
+    constraints::Vector{Term}
 
     function EntropyConstraints()
-        return new(Var[], Dict{Var,Int}(), Sum[])
+        return new(Var[], Dict{Var,Int}(), Term[])
     end
 end
 
@@ -32,11 +39,11 @@ function add_var!(ec::EntropyConstraints, Z::Var)
     return true
 end
 
-function add_constraint!(ec::EntropyConstraints, sum::Sum)
-    for (var, _) ∈ sum
+function add_constraint!(ec::EntropyConstraints, t::Term)
+    for (var, _) ∈ t.sum
         add_var!(ec, var)
     end
-    push!(ec.constraints, sum)
+    push!(ec.constraints, t)
 end
 
 function to_string(Z::Var)
@@ -61,24 +68,37 @@ function to_string(s::Sum)
     return join(["$(coef(a))$(to_string(v))" for (v, a) ∈ vars], " + ")
 end
 
-function submodularity(X::Var, Y::Var)
-    return Sum(
-        X => 1.0,
-        Y => 1.0,
-        X ∩ Y => -1.0,
-        X ∪ Y => -1.0,
+function to_string(t::Term)
+    return "[$(t.type)] $(to_string(t.sum))"
+end
+
+function create_submodularity(X::Var, Y::Var)
+    return Term(
+            submodularity,
+            Sum(
+                X => 1.0,
+                Y => 1.0,
+                X ∩ Y => -1.0,
+                X ∪ Y => -1.0,
+            )
     )
 end
 
-function monotonicity(X::Var, Y::Var)
-    return Sum(
-        X ∪ Y => 1.0,
-        X => -1.0,
+function create_monotonicity(X::Var, Y::Var)
+    return Term(
+        monotonicity,
+        Sum(
+            X ∪ Y => 1.0,
+            X => -1.0,
+        )
     )
 end
 
-function strictness()
-    return Sum(Var() => -1.0,)
+function create_strictness()
+    return Term(
+        strictness,
+        Sum(Var() => -1.0,)
+    )
 end
 
 function add_basic_submodularities!(ec::EntropyConstraints, V::Var)
@@ -87,7 +107,7 @@ function add_basic_submodularities!(ec::EntropyConstraints, V::Var)
         W = setdiff(V, Z)
         for (i, x) ∈ enumerate(W), (j, y) ∈ enumerate(W)
             if i < j
-                add_constraint!(ec, submodularity(Set([Z; x]), Set([Z; y])))
+                add_constraint!(ec, create_submodularity(Set([Z; x]), Set([Z; y])))
             end
         end
     end
@@ -97,13 +117,16 @@ function add_basic_monotonicities!(
     ec::EntropyConstraints, V::Var; include_strictness::Bool = false
 )
     for x ∈ sort(collect(V))
-        add_constraint!(ec, monotonicity(setdiff(V, Set((x,))), Set((x,))))
+        add_constraint!(ec, create_monotonicity(setdiff(V, Set((x,))), Set((x,))))
     end
-    include_strictness && add_constraint!(ec, Sum(Var() => 1.0,))
+    include_strictness && add_constraint!(ec, Term(
+        strictness,
+        Sum(Var() => 1.0,))
+    )
 end
 
 function add_strictness!(ec::EntropyConstraints)
-    add_constraint!(ec, strictness())
+    add_constraint!(ec, create_strictness())
 end
 
 function add_basic_shannon!(
@@ -124,20 +147,29 @@ function add_copy_lemma!(
     for W1 ∈ powerset(V1)
         W1 ⊆ X && continue
         W2 = (get(f, x, x) for x ∈ W1)
-        add_constraint!(ec, Sum(
-            Set(W1) => 1.0,
-            Set(W2) => -1.0,
+        add_constraint!(ec, Term(
+            copy_term,
+            Sum(
+                Set(W1) => 1.0,
+                Set(W2) => -1.0,
+            )
         ))
-        add_constraint!(ec, Sum(
-            Set(W2) => 1.0,
-            Set(W1) => -1.0,
+        add_constraint!(ec, Term(
+            copy_term,
+            Sum(
+                Set(W2) => 1.0,
+                Set(W1) => -1.0,
+            )
         ))
     end
-    add_constraint!(ec, Sum(
-        Set(Y1 ∪ X) => -1.0,
-        Set(Y2 ∪ X) => -1.0,
-        Set(X ∪ Y1 ∪ Y2) => 1.0,
-        X => 1.0,
+    add_constraint!(ec, Term(
+        conditional_independence,
+        Sum(
+            Set(Y1 ∪ X) => -1.0,
+            Set(Y2 ∪ X) => -1.0,
+            Set(X ∪ Y1 ∪ Y2) => 1.0,
+            X => 1.0,
+        )
     ))
 end
 
@@ -160,7 +192,7 @@ function express_constraint(ec::EntropyConstraints, sum::Sum)
     m = length(ec.constraints)
     A = zeros(n, m)
     for (j, c) ∈ enumerate(ec.constraints)
-        for (v, a) ∈ c
+        for (v, a) ∈ c.sum
             i = ec.var_index[v]
             @assert A[i, j] == 0.0
             A[i, j] = a
@@ -199,7 +231,7 @@ end
 
 # ec = EntropyConstraints()
 # V = Set([:A, :B, :C])
-# add_basic_shannon!(ec, V; include_strictness = true)
+# add_basic_shannon!(ec, V)
 
 # s = Sum()
 # add_h!(s, 1.0, Set([:A, :B]))
