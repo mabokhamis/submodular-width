@@ -15,6 +15,24 @@ using LinearAlgebra
 const Var = Set{Symbol}
 const Sum = Dict{Var,Float64}
 
+function add!(s1::Sum, s2::Sum)
+    for (v, a) ∈ s2
+        s1[v] = get(s1, v, 0.0) + a
+        if s1[v] ≈ 0.0
+            delete!(s1, v)
+        end
+    end
+end
+
+function subtract!(s1::Sum, s2::Sum)
+    for (v, a) ∈ s2
+        s1[v] = get(s1, v, 0.0) - a
+        if s1[v] ≈ 0.0
+            delete!(s1, v)
+        end
+    end
+end
+
 @enum TermType submodularity monotonicity strictness copy_term conditional_independence conditional
 
 struct Term
@@ -362,6 +380,15 @@ function generate_proof_sequence(conditionals::Vector{Term}, terms::Vector{Term}
     for t ∈ terms
         println("$(to_string(t))")
     end
+    println(repeat("-", 40))
+    s = Sum()
+    for t ∈ conditionals
+        add!(s, t.sum)
+    end
+    for t ∈ terms
+        subtract!(s, t.sum)
+    end
+    println("Final sum: $(to_string(s))")
 end
 
 # -------------------------------------------
