@@ -46,8 +46,11 @@ function add_constraint!(ec::EntropyConstraints, t::Term)
     push!(ec.constraints, t)
 end
 
-function to_string(Z::Var)
-    return "h($(join(sort(collect(Z)))))"
+function to_string(Y::Var, X::Var = Var())
+    Y = Y ∪ X
+    return isempty(X) ?
+        "h($(join(sort(collect(Y)))))" :
+        "h($(join(sort(collect(Y))))|$(join(sort(collect(X)))))"
 end
 
 function to_string(s::Sum)
@@ -73,6 +76,7 @@ function to_string(t::Term)
 end
 
 function create_submodularity(X::Var, Y::Var)
+    @assert !(X ⊆ Y) && !(Y ⊆ X)
     return Term(
             submodularity,
             Sum(
@@ -85,10 +89,12 @@ function create_submodularity(X::Var, Y::Var)
 end
 
 function create_monotonicity(X::Var, Y::Var)
+    Y = Y ∪ X
+    @assert X != Y
     return Term(
         monotonicity,
         Sum(
-            X ∪ Y => 1.0,
+            Y => 1.0,
             X => -1.0,
         )
     )
@@ -209,6 +215,7 @@ function express_constraint(ec::EntropyConstraints, sum::Sum)
         abs(v) < 1e-8 && continue
         println("$v * ($(to_string(ec.constraints[i])))")
     end
+    return x
 end
 
 function add_h!(s::Sum, c::Float64, Y::Var, X::Var = Var())
@@ -227,6 +234,136 @@ function add_I!(s::Sum, c::Float64, X::Var, Y::Var, Z::Var)
     s[W] = get(s, W, 0.0) - c
 end
 
+function create_conditional(Y::Var, X::Var = Var())
+    Y = Y ∪ X
+    return Term(
+        conditional,
+        X == Y ? Sum() : Sum(X => -1.0, Y => 1.0,)
+    )
+end
+
+function _get_X_Y(t::Term)
+    Xs = collect(v for (v, c) ∈ t.sum if c == -1.0)
+    Ys = collect(v for (v, c) ∈ t.sum if c == 1.0)
+    if length(Xs) == length(Ys) == 1
+        return (only(Xs), only(Ys))
+    else
+        @assert isempty(Xs) && isempty(Ys)
+        return (Var(), Var())
+    end
+end
+
+function _get_diamond(t::Term, Y::Var)
+    sides = collect(v for (v, c) ∈ t.sum if c == 1.0)
+    tb = collect(v for (v, c) ∈ t.sum if c == -1.0)
+    @assert length(sides) == length(tb) == 2
+    @assert Y ∈ sides
+    X = only(setdiff(sides, Set((Y,))))
+    sort!(tb; by = Z -> length(Z))
+    (Z, W) = tb
+    @assert Z == X ∩ Y
+    @assert W == X ∪ Y
+    return (X, Y, Z, W)
+end
+
+function get_diamond2(t::Term, W::Var)
+    sides = collect(v for (v, c) ∈ t.sum if c == -1.0)
+    tb = collect(v for (v, c) ∈ t.sum if c == 1.0)
+    @assert length(sides) == length(tb) == 2
+    @assert W ∈ tb
+    sort!(tb; by = Z -> length(Z))
+    W == last(tb) || return nothing
+    Z = first(tb)
+    (X, Y) = sides
+    @assert Z == X ∩ Y
+    @assert W == X ∪ Y
+    return (X, Y, Z, W)
+end
+
+function maybe_apply_proof_step(δ::Term, t::Term)
+    @assert δ.type == conditional
+    (X, Y) = _get_X_Y(δ)
+    isempty(X) || return nothing
+    get(t.sum, Y, 0.0) == (t.type == conditional ? -1.0 : 1.0) || return nothing
+    if t.type == conditional
+        (Y2, Z) = _get_X_Y(t)
+        @assert Y2 == Y
+        println("$(to_string(Y)) + $(to_string(Z, Y)) --> $(to_string(Z))")
+        return Term[
+            create_conditional(Z, Var()),
+        ]
+    elseif t.type == monotonicity || t.type == copy_term
+        (Z, Y2) = _get_X_Y(t)
+        @assert Y2 == Y
+        println("$(to_string(Y)) --> $(to_string(Z))")
+        return Term[
+            create_conditional(Z, Var()),
+        ]
+    elseif t.type == submodularity
+        (X, Y, Z, W) = _get_diamond(t, Y)
+        println("$(to_string(Y)) --> $(to_string(Z)) + $(to_string(Y, Z))")
+        println("$(to_string(Y, Z)) --> $(to_string(W, X))")
+        return Term[
+            create_conditional(Z, Var()),
+            create_conditional(W, X),
+        ]
+    elseif t.type == conditional_independence
+        r = get_diamond2(t, Y)
+        if isnothing(r)
+            @warn "$(to_string(δ)) $(to_string(t))"
+            return nothing
+        end
+        (X, Y, Z, W) = r
+        println("$(to_string(W)) --> $(to_string(X)) + $(to_string(Y, Z))")
+        return Term[
+            create_conditional(X, Var()),
+            create_conditional(Y, Z),
+        ]
+    else
+        error("Unsupported term type: $(to_string(t))")
+    end
+end
+
+function maybe_apply_proof_step(conditionals::Vector{Term}, terms::Vector{Term})
+    for (i1, δ1) ∈ enumerate(conditionals), (i2, δ2) ∈ enumerate(conditionals)
+        i1 == i2 && continue
+        r = maybe_apply_proof_step(δ1, δ2)
+        isnothing(r) && continue
+        conditionals = [δ for (i, δ) ∈ enumerate(conditionals) if i ∉ (i1, i2)]
+        append!(conditionals, r)
+        return (true, conditionals, terms)
+    end
+    terms = sort(terms; by = t -> t.type)
+    for (i, δ) ∈ enumerate(conditionals), (j, t) ∈ enumerate(terms)
+        r = maybe_apply_proof_step(δ, t)
+        isnothing(r) && continue
+        conditionals = [δ for (k, δ) ∈ enumerate(conditionals) if k != i]
+        append!(conditionals, r)
+        terms = [t for (k, t) ∈ enumerate(terms) if k != j]
+        return (true, conditionals, terms)
+    end
+    return (false, conditionals, terms)
+end
+
+function generate_proof_sequence(conditionals::Vector{Term}, terms::Vector{Term})
+    println(repeat("-", 40))
+    while true
+        (changed, conditionals, terms) = maybe_apply_proof_step(conditionals, terms)
+        changed || break
+    end
+    if !isempty(terms)
+        @warn("Proof failed")
+    end
+    println(repeat("-", 40))
+    for δ ∈ conditionals
+        println("$(to_string(δ))")
+    end
+    println(repeat("-", 40))
+    for t ∈ terms
+        println("$(to_string(t))")
+    end
+end
+
 # -------------------------------------------
 
 # ec = EntropyConstraints()
@@ -239,7 +376,32 @@ end
 # add_h!(s, 1.0, Set([:A, :C]))
 # add_h!(s, -2.0, Set([:A, :B, :C]))
 
-# express_constraint(ec, s)
+# x = express_constraint(ec, s)
+
+# terms = [t for (i, t) ∈ enumerate(ec.constraints) for j ∈ 1:Int(round(x[i]))]
+
+# conditionals = [
+#     create_conditional(Set([:A, :B])),
+#     create_conditional(Set([:B, :C])),
+#     create_conditional(Set([:A, :C])),
+# ]
+
+# generate_proof_sequence(conditionals, terms)
+
+# -------------------------------------------
+
+# terms = [Term(conditional_independence, Sum(
+#     Set([:A, :B, :C]) => 1.0,
+#     Set([:B]) => 1.0,
+#     Set([:A, :B]) => -1.0,
+#     Set([:B, :C]) => -1.0,
+# ))]
+
+# conditionals = [
+#     create_conditional(Set([:A, :B, :C])),
+# ]
+
+# generate_proof_sequence(conditionals, terms)
 
 # -------------------------------------------
 
@@ -278,6 +440,27 @@ add_h!(s, 1.0, Set([:A, :B, :X, :Y, :C]), Set([:B, :X, :Y]))
 add_h!(s, 1.0, Set([:A, :B, :X, :Y, :C]), Set([:A, :C]))
 add_h!(s, 2.0, Set([:A, :B, :X, :Y, :C]), Set([:X, :C]))
 add_h!(s, 2.0, Set([:A, :B, :X, :Y, :C]), Set([:Y, :C]))
-express_constraint(ec, s)
+x = express_constraint(ec, s)
+
+terms = [t for (i, t) ∈ enumerate(ec.constraints) for j ∈ 1:Int(round(x[i]))]
+
+conditionals = [
+    [create_conditional(Set([:X, :Y])) for i ∈ 1:3];
+    [create_conditional(Set([:A, :X])) for i ∈ 1:3];
+    [create_conditional(Set([:A, :Y])) for i ∈ 1:3];
+    [create_conditional(Set([:B, :X])) for i ∈ 1:1];
+    [create_conditional(Set([:B, :Y])) for i ∈ 1:1];
+    [create_conditional(Set([:C])) for i ∈ 1:5];
+
+    [create_conditional(Set([:A, :B, :X, :Y, :C]), Set([:A, :B])) for i ∈ 1:1];
+    [create_conditional(Set([:A, :B, :X, :Y, :C]), Set([:A, :X, :Y])) for i ∈ 1:4];
+    [create_conditional(Set([:A, :B, :X, :Y, :C]), Set([:B, :X, :Y])) for i ∈ 1:1];
+
+    [create_conditional(Set([:A, :B, :X, :Y, :C]), Set([:A, :C])) for i ∈ 1:1];
+    [create_conditional(Set([:A, :B, :X, :Y, :C]), Set([:X, :C])) for i ∈ 1:2];
+    [create_conditional(Set([:A, :B, :X, :Y, :C]), Set([:Y, :C])) for i ∈ 1:2];
+]
+
+generate_proof_sequence(conditionals, terms)
 
 end
