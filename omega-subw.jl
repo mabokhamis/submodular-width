@@ -319,16 +319,16 @@ end
 
 function simplify(t::Term{T}) where T
     if t isa Min || t isa Max
-        t = typeof(t)([simplify(arg) for arg ∈ t.args])
+        new_args = [simplify(arg) for arg ∈ t.args]
+        t = typeof(t)(new_args)
     end
+    rewritten = false
     b = true
     while b
         (b, t) = _simplify(t)
+        rewritten |= b
     end
-    if t isa Min || t isa Max
-        t = typeof(t)([simplify(arg) for arg ∈ t.args])
-    end
-    return t
+    return rewritten ? simplify(t) : t
 end
 
 exp =
@@ -353,7 +353,7 @@ Max([
 
 println(exp)
 
-exp = simplify(exp)
+@time exp = simplify(exp)
 
 println(exp)
 
