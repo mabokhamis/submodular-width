@@ -171,12 +171,12 @@ function omega_submodular_width(H::Hypergraph{T}; verbose::Bool = true) where T
     return obj
 end
 
-H = Hypergraph(
-    ["A", "B", "C"],
-    [["A", "B"], ["B", "C"], ["A", "C"]]
-)
+# H = Hypergraph(
+#     ["A", "B", "C"],
+#     [["A", "B"], ["B", "C"], ["A", "C"]]
+# )
 
-println(omega_submodular_width(H))
+# println(omega_submodular_width(H))
 
 @auto_hash_equals struct Constant
     value::Float64
@@ -189,27 +189,27 @@ Base.show(io::IO, c::Constant) = print(io, c.symbol)
 
 abstract type Term{T} end
 
-@auto_hash_equals mutable struct Sum{T} <: Term{T}
-    arg::Dict{Set{T},Constant}
-
-    Sum(arg::Dict{Set{T},Constant}) where T = new{T}(arg)
+@auto_hash_equals struct Sum{T} <: Term{T}
+    args::Dict{Set{T},Constant}
 end
 
-@auto_hash_equals mutable struct Min{T} <: Term{T}
-    arg::Vector{Term{T}}
+Sum(args::Dict{Set{T},Constant}) where T = Sum{T}(args)
 
-    Min(arg::Vector{<:Term{T}}) where T = new{T}(arg)
+@auto_hash_equals struct Min{T} <: Term{T}
+    args::Vector{Term{T}}
 end
 
-@auto_hash_equals mutable struct Max{T} <: Term{T}
-    arg::Vector{Term{T}}
+Min(args::Vector{<:Term{T}}) where T = Min{T}(args)
 
-    Max(arg::Vector{<:Term{T}}) where T = new{T}(arg)
+@auto_hash_equals struct Max{T} <: Term{T}
+    args::Vector{Term{T}}
 end
+
+Max(args::Vector{<:Term{T}}) where T = Max{T}(args)
 
 function pretty_print(io::IO, s::Sum; indent::Int = 0)
     margin = repeat(" ", indent)
-    t = SortedDict(name(x) => c for (x, c) in s.arg)
+    t = SortedDict(name(x) => c for (x, c) in s.args)
     print(io, margin, join(("$c*$x" for (x, c) in t), " + "))
 end
 
@@ -217,7 +217,7 @@ function pretty_print(io::IO, m::Union{Min, Max}; indent::Int = 0)
     margin = repeat(" ", indent)
     t = m isa Min ? "Min" : "Max"
     println(io, "$(margin)$t{")
-    for arg ∈ m.arg
+    for arg ∈ m.args
         pretty_print(io, arg; indent = indent + 4)
         println(io, ",")
     end
@@ -228,16 +228,132 @@ function Base.show(io::IO, t::Term)
     pretty_print(io, t)
 end
 
-exp = Max([
+_same_type(x::T, y::T) where T = true
+_same_type(x, y) = false
+
+function coefficient(sum::Sum{T}, x::Set{T}) where T
+    return  haskey(sum.args, x) ? sum.args[x].value : 0.0
+end
+
+function Base.:(<=)(a::Sum, b::Sum)
+    return all(coefficient(a, x) <= coefficient(b, x) for x ∈ keys(a.args) ∪ keys(b.args))
+end
+
+function Base.:(<=)(a::Sum, b::Min)
+    return all(a ≤ arg for arg ∈ b.args)
+end
+
+function Base.:(<=)(a::Sum, b::Max)
+    return any(a ≤ arg for arg ∈ b.args)
+end
+
+function Base.:(<=)(a::Min, b::Term)
+    return any(arg ≤ b for arg ∈ a.args)
+end
+
+function Base.:(<=)(a::Max, b::Term)
+    return all(arg ≤ b for arg ∈ a.args)
+end
+
+_min_subsumed_by(i, a, j, b) = b <= a && (!(a <= b) || a <= b && j < i)
+_max_subsumed_by(i, a, j, b) = a <= b && (!(b <= a) || b <= a && j < i)
+
+function minimal_args(args::Vector{<:Term{T}}; subsumed_by::Function = _min_subsumed_by) where {T}
+    new_args = Vector{Term{T}}()
+    for (i, a) ∈ enumerate(args)
+        if any(subsumed_by(i, a, j, b) for (j, b) ∈ enumerate(args) if j != i)
+            continue
+        end
+        push!(new_args, a)
+    end
+    return new_args
+end
+
+_simplify(s::Sum) = (false, s)
+
+function _simplify(m::Union{Min{T},Max{T}}) where T
+    new_args = unique(m.args)
+    if length(new_args) != length(m.args)
+        return (true, typeof(m)(new_args))
+    end
+
+    if any(_same_type(arg, m) for arg ∈ m.args)
+        new_args = Vector{Term{T}}()
+        for arg ∈ m.args
+            if _same_type(arg, m)
+                append!(new_args, arg.args)
+            else
+                push!(new_args, arg)
+            end
+        end
+        return (true, typeof(m)(new_args))
+    end
+
+    if m isa Min || m isa Max
+        new_args = minimal_args(m.args;
+            subsumed_by = m isa Min ? _min_subsumed_by : _max_subsumed_by)
+        if length(new_args) != length(m.args)
+            return (true, typeof(m)(new_args))
+        end
+    end
+
+    if m isa Min && any(arg isa Max for arg ∈ m.args)
+        new_args = Vector{Vector{Term{T}}}()
+        for arg ∈ m.args
+            if arg isa Max
+                push!(new_args, arg.args)
+            else
+                push!(new_args, [arg])
+            end
+        end
+        selectors = Iterators.product(new_args...,)
+        new_args = Vector{Term{T}}()
+        for β ∈ selectors
+            push!(new_args, Min(collect(β)))
+        end
+        return (true, Max(new_args))
+    end
+
+    return (false, m)
+end
+
+function simplify(t::Term{T}) where T
+    if t isa Min || t isa Max
+        t = typeof(t)([simplify(arg) for arg ∈ t.args])
+    end
+    b = true
+    while b
+        (b, t) = _simplify(t)
+    end
+    if t isa Min || t isa Max
+        t = typeof(t)([simplify(arg) for arg ∈ t.args])
+    end
+    return t
+end
+
+exp =
+Max([
     Min([
-        Sum(Dict(Set(["A", "B"]) => Constant(1.0), Set(["B", "C"]) => Constant(2.0))),
-        Sum(Dict(Set(["A", "B"]) => Constant(2.0), Set(["B", "C"]) => Constant(1.0))),
+        Max([
+            Sum(Dict(Set(["A"]) => Constant(1.0))),
+            Sum(Dict(Set(["B"]) => Constant(1.0))),
+        ]),
+        Max([
+            Sum(Dict(Set(["C"]) => Constant(1.0))),
+            Sum(Dict(Set(["D"]) => Constant(1.0))),
+        ]),
+        Max([
+            Sum(Dict(Set(["C"]) => Constant(1.0))),
+            Sum(Dict(Set(["D"]) => Constant(1.0))),
+        ]),
     ]),
-    Min([
-        Sum(Dict(Set(["A", "B"]) => Constant(1.0), Set(["B", "C"]) => Constant(2.0))),
-        Sum(Dict(Set(["A", "B"]) => Constant(2.0), Set(["B", "C"]) => Constant(1.0))),
-    ]),
+    Sum(Dict(Set(["A"]) => Constant(1.0), Set(["B"]) => Constant(0.9))),
+    Sum(Dict(Set(["A"]) => Constant(0.9), Set(["B"]) => Constant(1.9))),
 ])
+
+println(exp)
+
+exp = simplify(exp)
 
 println(exp)
 
