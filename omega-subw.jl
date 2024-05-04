@@ -4,6 +4,7 @@
 # Pkg.add("MathOptInterface")
 # Pkg.add("Combinatorics")
 # Pkg.add("DataStructures")
+# Pkg.add("AutoHashEquals")
 
 module OmegaSubmodularWidth
 
@@ -12,6 +13,7 @@ using Clp
 using MathOptInterface
 using Combinatorics
 using DataStructures
+using AutoHashEquals
 
 """
     Hypergraph{T}
@@ -73,15 +75,22 @@ function unzip(H::Hypergraph{T}, z::Int)::Set{T} where T
     return set
 end
 
+"""
+    name(U)
+
+Given a set `U` of vertices, return a string representing `h(U)`
+"""
+function name(U::Set{T})::String where T
+    return "h(" * join(map(string, sort(collect(U)))) * ")"
+end
+
 function omega_submodular_width(H::Hypergraph{T}; verbose::Bool = true) where T
     @warn "This method does not handle the general case yet"
 
     n = length(H.vars)
     N = 2 ^ n
 
-    function f(z::Int)::String where T
-        return "h(" * join(map(string, sort(collect(unzip(H, z))))) * ")"
-    end
+    f(z::Int) = name(unzip(H, z))
 
     # initialize a linear program (LP)
     model = Model(Clp.Optimizer)
@@ -124,7 +133,7 @@ function omega_submodular_width(H::Hypergraph{T}; verbose::Bool = true) where T
     # For each hyperedge `e` in `H`, the LP contains a constraint `h[e] ≤ 1.0`. These
     # are called "edge-domination" constraints.
     verbose && println("\nEdge-domination Constraints:")
-    for (i, edge) in enumerate(H.edges)
+    for edge in H.edges
         E = zip(H, edge)
         @constraint(model, h[E] ≤ 1.0)
         verbose && println("$(f(E)) ≤ 1.0")
@@ -168,5 +177,68 @@ H = Hypergraph(
 )
 
 println(omega_submodular_width(H))
+
+@auto_hash_equals struct Constant
+    value::Float64
+    symbol::String
+
+    Constant(value::Float64, symbol::String = string(value)) = new(value, symbol)
+end
+
+Base.show(io::IO, c::Constant) = print(io, c.symbol)
+
+abstract type Term{T} end
+
+@auto_hash_equals mutable struct Sum{T} <: Term{T}
+    arg::Dict{Set{T},Constant}
+
+    Sum(arg::Dict{Set{T},Constant}) where T = new{T}(arg)
+end
+
+@auto_hash_equals mutable struct Min{T} <: Term{T}
+    arg::Vector{Term{T}}
+
+    Min(arg::Vector{<:Term{T}}) where T = new{T}(arg)
+end
+
+@auto_hash_equals mutable struct Max{T} <: Term{T}
+    arg::Vector{Term{T}}
+
+    Max(arg::Vector{<:Term{T}}) where T = new{T}(arg)
+end
+
+function pretty_print(io::IO, s::Sum; indent::Int = 0)
+    margin = repeat(" ", indent)
+    t = SortedDict(name(x) => c for (x, c) in s.arg)
+    print(io, margin, join(("$c*$x" for (x, c) in t), " + "))
+end
+
+function pretty_print(io::IO, m::Union{Min, Max}; indent::Int = 0)
+    margin = repeat(" ", indent)
+    t = m isa Min ? "Min" : "Max"
+    println(io, "$(margin)$t{")
+    for arg ∈ m.arg
+        pretty_print(io, arg; indent = indent + 4)
+        println(io, ",")
+    end
+    print(io, "$(margin)}")
+end
+
+function Base.show(io::IO, t::Term)
+    pretty_print(io, t)
+end
+
+exp = Max([
+    Min([
+        Sum(Dict(Set(["A", "B"]) => Constant(1.0), Set(["B", "C"]) => Constant(2.0))),
+        Sum(Dict(Set(["A", "B"]) => Constant(2.0), Set(["B", "C"]) => Constant(1.0))),
+    ]),
+    Min([
+        Sum(Dict(Set(["A", "B"]) => Constant(1.0), Set(["B", "C"]) => Constant(2.0))),
+        Sum(Dict(Set(["A", "B"]) => Constant(2.0), Set(["B", "C"]) => Constant(1.0))),
+    ]),
+])
+
+println(exp)
 
 end
