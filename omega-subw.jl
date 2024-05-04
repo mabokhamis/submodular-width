@@ -4,15 +4,14 @@
 # Pkg.add("MathOptInterface")
 # Pkg.add("Combinatorics")
 # Pkg.add("DataStructures")
-# Pkg.add("LightGraphs")
 
 module OmegaSubmodularWidth
 
-using JuMP, Clp, MathOptInterface
+using JuMP
+using Clp
+using MathOptInterface
 using Combinatorics
 using DataStructures
-using LightGraphs
-using Random
 
 """
     Hypergraph{T}
@@ -33,8 +32,9 @@ mutable struct Hypergraph{T}
         vars::Vector{T},
         edges::Vector{Vector{T}};
     ) where T
-        @assert(length(unique(vars)) == length(vars))
+        @assert length(unique(vars)) == length(vars)
         var_index = Dict{T, Int}(var => i for (i, var) in enumerate(vars))
+        @assert all(e ⊆ vars for e in edges)
         edges = map(edge -> Set{T}(edge), edges)
         return new{T}(vars, edges, var_index)
     end
@@ -78,7 +78,10 @@ function omega_submodular_width(H::Hypergraph{T}; verbose::Bool = true) where T
 
     n = length(H.vars)
     N = 2 ^ n
-    f(X) = sort(collect(unzip(H, X)))
+
+    function f(z::Int)::String where T
+        return "h(" * join(map(string, sort(collect(unzip(H, z))))) * ")"
+    end
 
     # initialize a linear program (LP)
     model = Model(Clp.Optimizer)
@@ -86,36 +89,35 @@ function omega_submodular_width(H::Hypergraph{T}; verbose::Bool = true) where T
 
     # Let `V` be the set of vertices of `H`. For each subset `U ⊆ V`, the LP contains a
     # corresponding variable `h[U]`
-    @variable(model, h[0:N-1] >= 0.0)
+    @variable(model, h[0:N-1])
 
     # The LP contains the constraint `h[∅] = 0`
     verbose && println("\nZero Constraint:")
     @constraint(model, h[0] == 0.0)
-    verbose && println("h[$(f(0))] == 0.0")
+    verbose && println("$(f(0)) = 0.0")
 
     # For each `X ⊆ Y ⊆ V`, the LP contains a constraint `h[X] ≤ h[Y]`. These are called
     # "monotonicity constraints"
-    verbose && println("\nMonotonicity Constraints:")
-    for X = 0:N-1, y = 0:n-1
-        if X & (1 << y) == 0
-            Y = X | (1 << y)
-            @constraint(model, h[Y] - h[X] >= 0.0)
-            verbose && println("h[$(f(Y))] - h[$(f(X))] >= 0.0")
-        end
+    verbose && println("\n(Basic) Monotonicity Constraints:")
+    for y = 0:n-1
+        Y = N - 1
+        X = Y & ~(1 << y)
+        @constraint(model, h[Y] - h[X] ≥ 0.0)
+        verbose && println("$(f(Y)) - $(f(X)) ≥ 0.0")
     end
 
     # For each `Y, Z ⊆ V` where `Y` and `Z` are not contained in one another, the LP
     # contains a constraint `h[Y] + h[Z] ≥ h[Y ∩ Z] + h[Y ∪ Z]`. These are called
     # "submodularity constraints". (Alternatively they can formulated as follows
     # using "conditional entropy" notation: `h[Y | Y ∩ Z] ≥ h[Y ∪ Z | Z]`.)
-    verbose && println("\nSubmodularity Constraints:")
+    verbose && println("\n(Basic) Submodularity Constraints:")
     for X = 0:N-1, y = 0:n-1, z = y+1:n-1
         if (X & (1 << y) == 0) && (X & (1 << z) == 0)
             Y = X | (1 << y)
             Z = X | (1 << z)
             W = Y | (1 << z)
-            @constraint(model, h[Y] + h[Z] - h[X] - h[W] >= 0.0)
-            verbose && println("h[$(f(Y))] + h[$(f(Z))] - h[$(f(X))] - h[$(f(W))] >= 0.0")
+            @constraint(model, h[Y] + h[Z] - h[X] - h[W] ≥ 0.0)
+            verbose && println("$(f(Y)) + $(f(Z)) - $(f(X)) - $(f(W)) ≥ 0.0")
         end
     end
 
@@ -124,8 +126,8 @@ function omega_submodular_width(H::Hypergraph{T}; verbose::Bool = true) where T
     verbose && println("\nEdge-domination Constraints:")
     for (i, edge) in enumerate(H.edges)
         E = zip(H, edge)
-        @constraint(model, h[E] <= 1.0)
-        verbose && println("h[$(f(E))] <= 1.0")
+        @constraint(model, h[E] ≤ 1.0)
+        verbose && println("$(f(E)) ≤ 1.0")
     end
 
     A = zip(H, Set([H.vars[1]]))
@@ -137,9 +139,9 @@ function omega_submodular_width(H::Hypergraph{T}; verbose::Bool = true) where T
 
     verbose && println("\nObjective Constraints:")
     @constraint(model, w <= h[ABC])
-    verbose && println("w <= h[$(f(ABC))]")
+    verbose && println("w <= $(f(ABC))")
     @constraint(model, w <= h[A] + h[B])
-    verbose && println("w <= h[$(f(A))+h[$(f(B))]")
+    verbose && println("w <= $(f(A))+$(f(B))")
 
     # Finally, we set the objective of the LP to maximize `W`
     verbose && println("\nObjective:")
@@ -151,10 +153,10 @@ function omega_submodular_width(H::Hypergraph{T}; verbose::Bool = true) where T
 
     obj = objective_value(model)
 
-    verbose && println("Optimal Solution:")
+    verbose && println("\nOptimal Solution:")
     sol = value.(h)
     for i = 0:N-1
-        verbose && println("h[$(f(i))] = $(sol[i])")
+        verbose && println("$(f(i)) = $(sol[i])")
     end
 
     return obj
