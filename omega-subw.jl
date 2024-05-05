@@ -50,9 +50,13 @@ bits. For example, `{v1, v3, v4, v8}` is encoded as the binary string `10001101`
 """
 function zip(H::Hypergraph{T}, U::Set{T})::Int where T
     @assert U ⊆ H.vars
+    return zip(H.var_index, U)
+end
+
+function zip(var_index::Dict{T, Int}, U::Set{T})::Int where T
     z = 0
     for x in U
-        z |= (1 << (H.var_index[x] - 1))
+        z |= (1 << (var_index[x] - 1))
     end
     return z
 end
@@ -64,11 +68,15 @@ Given a hypergraph `H` and an integer `z` representing a subset `U` of the verti
 (that was encoded using `z = zip(H, U)`), return `U`
 """
 function unzip(H::Hypergraph{T}, z::Int)::Set{T} where T
+    return unzip(H.vars, z)
+end
+
+function unzip(vars::Vector{T}, z::Int)::Set{T} where T
     set = Set{T}()
     i = 1
     while z != 0
         if z & 1 == 1
-            push!(set, H.vars[i])
+            push!(set, vars[i])
         end
         i += 1
         z >>= 1
@@ -108,6 +116,19 @@ function Sum(args::Dict{Set{T},Constant}) where T
     return Sum{T}(args)
 end
 
+function coefficient(sum::Sum{T}, x::Set{T}) where T
+    return  haskey(sum.args, x) ? sum.args[x].value : 0.0
+end
+
+function Base.:(-)(a::Sum{T}, b::Sum{T}) where T
+    args = Dict{Set{T}, Constant}()
+    for x ∈ keys(a.args) ∪ keys(b.args)
+        c = coefficient(a, x) - coefficient(b, x)
+        c != 0.0 && (args[x] = Constant(c))
+    end
+    return Sum(args)
+end
+
 @auto_hash_equals struct Min{T} <: Term{T}
     args::Vector{Term{T}}
 end
@@ -144,12 +165,8 @@ end
 _same_type(x::T, y::T) where T = true
 _same_type(x, y) = false
 
-function coefficient(sum::Sum{T}, x::Set{T}) where T
-    return  haskey(sum.args, x) ? sum.args[x].value : 0.0
-end
-
 function Base.:(<=)(a::Sum, b::Sum)
-    return all(coefficient(a, x) <= coefficient(b, x) for x ∈ keys(a.args) ∪ keys(b.args))
+    return is_non_negative(b - a)
 end
 
 function Base.:(<=)(a::Sum, b::Min)
@@ -353,6 +370,74 @@ function eliminate_variables(H::Hypergraph{T}, ω::Float64) where T
     return simplify(Min(min_args))
 end
 
+function solve(A, b)
+    model = Model(Clp.Optimizer)
+    set_optimizer_attribute(model, "LogLevel", 0)
+    @variable(model, x[1:size(A, 2)] >= 0)
+    b1 = b .- 1e-7
+    b2 = b .+ 1e-7
+    @constraint(model, A * x >= b1)
+    @constraint(model, A * x <= b2)
+    optimize!(model)
+    return termination_status(model) == MathOptInterface.OPTIMAL
+end
+
+function is_non_negative(sum::Sum{T}) where T
+    vars = collect(reduce(union!, keys(sum.args); init = Set{T}()))
+    var_index = Dict{T, Int}(var => i for (i, var) in enumerate(vars))
+    n = length(vars)
+    N = 2 ^ n
+
+    A = Vector{Vector{Float64}}()
+    c = zeros(N)
+    c[0 + 1] = 1.0
+    push!(A, c)
+    c = zeros(N)
+    c[0 + 1] = -1.0
+    push!(A, c)
+
+    for y = 0:n-1
+        Y = N - 1
+        X = Y & ~(1 << y)
+        c = zeros(N)
+        c[Y + 1] = 1.0
+        c[X + 1] = -1.0
+        push!(A, c)
+    end
+
+    for X = 0:N-1, y = 0:n-1, z = y+1:n-1
+        if (X & (1 << y) == 0) && (X & (1 << z) == 0)
+            Y = X | (1 << y)
+            Z = X | (1 << z)
+            W = Y | (1 << z)
+            c = zeros(N)
+            c[Y + 1] = 1.0
+            c[Z + 1] = 1.0
+            c[X + 1] = -1.0
+            c[W + 1] = -1.0
+            push!(A, c)
+        end
+    end
+
+    A = hcat(A...)
+
+    b = zeros(N)
+    for (v, c) ∈ sum.args
+        b[zip(var_index, v) + 1] = c.value
+    end
+
+    return solve(A, b)
+end
+
+# s = Sum(Dict(
+#     Set(["A", "B", "C"]) => Constant(-1.0),
+#     Set(["A", "B"]) => Constant(0.5),
+#     Set(["B", "C"]) => Constant(0.5),
+#     Set(["C", "A"]) => Constant(0.5),
+# ))
+
+# println(is_non_negative(s))
+
 function omega_submodular_width(H::Hypergraph{T}, m::Min{T}; verbose::Bool = true) where T
 
     n = length(H.vars)
@@ -448,6 +533,7 @@ end
 
 function omega_submodular_width(H::Hypergraph{T}, ω::Float64; verbose::Bool = true) where T
     expr = eliminate_variables(H, ω)
+    println(expr)
     @assert expr isa Max
     width = 0.0
     for arg ∈ expr.args
@@ -462,10 +548,12 @@ H = Hypergraph(
     [["A", "B"], ["B", "C"], ["A", "C"]]
 )
 
-ω = 2.4
+ω = 2.5
 w = omega_submodular_width(H, ω; verbose = false)
 println(w)
 println(2 * ω / (ω + 1))
+
+#-----------------------------------------------
 
 # H = Hypergraph(
 #     ["A", "B1", "B2", "B3"],
@@ -476,5 +564,36 @@ println(2 * ω / (ω + 1))
 # w = omega_submodular_width(H, ω; verbose = false)
 # println(w)
 # println(1 + 2 * ω / (2ω + 3))
+
+# expr = Max([
+#     Min([
+#         Sum(Dict(Set(["A", "B", "C"]) => Constant(1.0))),
+#         Sum(Dict(Set(["A"]) => Constant(1.0), Set(["B"]) => Constant(1.0))),
+#         Sum(Dict(Set(["B"]) => Constant(1.0), Set(["C"]) => Constant(1.0))),
+#     ]),
+#     Min([
+#         Sum(Dict(Set(["A", "B", "C"]) => Constant(1.0))),
+#         Sum(Dict(Set(["B"]) => Constant(1.0), Set(["C"]) => Constant(1.0))),
+#         Sum(Dict(Set(["A"]) => Constant(1.0), Set(["B"]) => Constant(1.0))),
+#     ]),
+#     Min([
+#         Sum(Dict(Set(["A", "B", "C"]) => Constant(1.0))),
+#         Sum(Dict(Set(["B"]) => Constant(1.0), Set(["C"]) => Constant(1.0))),
+#         Sum(Dict(Set(["A"]) => Constant(1.0), Set(["B"]) => Constant(1.0))),
+#         Sum(Dict(Set(["A"]) => Constant(1.0), Set(["C"]) => Constant(1.0))),
+#     ]),
+# ])
+
+# expr2 = simplify(expr)
+
+# println(repeat("%", 500))
+# # println(expr)
+# # println(repeat("-", 40))
+# # println(expr2)
+# x = expr2.args[1]
+# y = expr2.args[3]
+# println(x)
+# println(y)
+# println(x <= y)
 
 end
