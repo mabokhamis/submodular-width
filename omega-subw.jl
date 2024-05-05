@@ -49,6 +49,7 @@ Given a hypergraph `H` and a subset `U` of the vertices of `H`, encode `U` as a 
 bits. For example, `{v1, v3, v4, v8}` is encoded as the binary string `10001101`
 """
 function zip(H::Hypergraph{T}, U::Set{T})::Int where T
+    @assert U ⊆ H.vars
     z = 0
     for x in U
         z |= (1 << (H.var_index[x] - 1))
@@ -432,6 +433,18 @@ function omega_submodular_width(H::Hypergraph{T}, m::Min{T}; verbose::Bool = tru
 
     return obj
 end
+
+# H = Hypergraph(
+#     ["A", "B", "C"],
+#     [["A", "B"], ["B", "C"], ["A", "C"]]
+# )
+
+# m = Min([
+#     Sum(Dict(Set(["A", "B", "C"]) => Constant(1.0))),
+#     Sum(Dict(Set(["A"]) => Constant(1.0), Set(["B"]) => Constant(1.0))),
+# ])
+
+# println(omega_submodular_width(H, m; verbose = true))
 
 function omega_submodular_width(H::Hypergraph{T}, ω::Float64; verbose::Bool = true) where T
     expr = eliminate_variables(H, ω)
