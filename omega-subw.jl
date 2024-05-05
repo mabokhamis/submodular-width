@@ -185,6 +185,14 @@ function Base.:(<=)(a::Max, b::Term)
     return all(arg ≤ b for arg ∈ a.args)
 end
 
+function Base.:(<=)(a::Min, b::Min)
+    return all(any(a2 <= b2 for a2 ∈ a.args) for b2 ∈ b.args)
+end
+
+function Base.:(<=)(a::Max, b::Max)
+    return all(any(a2 <= b2 for b2 ∈ b.args) for a2 ∈ a.args)
+end
+
 _min_subsumed_by(i, a, j, b) = b <= a && (!(a <= b) || a <= b && j < i)
 _max_subsumed_by(i, a, j, b) = a <= b && (!(b <= a) || b <= a && j < i)
 
@@ -548,22 +556,22 @@ H = Hypergraph(
     [["A", "B"], ["B", "C"], ["A", "C"]]
 )
 
-ω = 2.5
-w = omega_submodular_width(H, ω; verbose = false)
-println(w)
-println(2 * ω / (ω + 1))
-
-#-----------------------------------------------
-
-# H = Hypergraph(
-#     ["A", "B1", "B2", "B3"],
-#     [["B1", "B2", "B3"], ["A", "B1"], ["A", "B2"], ["A", "B3"]]
-# )
-
 # ω = 3.0
 # w = omega_submodular_width(H, ω; verbose = false)
 # println(w)
-# println(1 + 2 * ω / (2ω + 3))
+# println(2 * ω / (ω + 1))
+
+#-----------------------------------------------
+
+H = Hypergraph(
+    ["A", "B1", "B2", "B3"],
+    [["B1", "B2", "B3"], ["A", "B1"], ["A", "B2"], ["A", "B3"]]
+)
+
+ω = 2.5
+w = omega_submodular_width(H, ω; verbose = false)
+println(w)
+println(1 + 2 * ω / (2ω + 3))
 
 # expr = Max([
 #     Min([
