@@ -573,35 +573,16 @@ w = omega_submodular_width(H, ω; verbose = false)
 println(w)
 println(1 + 2 * ω / (2ω + 3))
 
-# expr = Max([
-#     Min([
-#         Sum(Dict(Set(["A", "B", "C"]) => Constant(1.0))),
-#         Sum(Dict(Set(["A"]) => Constant(1.0), Set(["B"]) => Constant(1.0))),
-#         Sum(Dict(Set(["B"]) => Constant(1.0), Set(["C"]) => Constant(1.0))),
-#     ]),
-#     Min([
-#         Sum(Dict(Set(["A", "B", "C"]) => Constant(1.0))),
-#         Sum(Dict(Set(["B"]) => Constant(1.0), Set(["C"]) => Constant(1.0))),
-#         Sum(Dict(Set(["A"]) => Constant(1.0), Set(["B"]) => Constant(1.0))),
-#     ]),
-#     Min([
-#         Sum(Dict(Set(["A", "B", "C"]) => Constant(1.0))),
-#         Sum(Dict(Set(["B"]) => Constant(1.0), Set(["C"]) => Constant(1.0))),
-#         Sum(Dict(Set(["A"]) => Constant(1.0), Set(["B"]) => Constant(1.0))),
-#         Sum(Dict(Set(["A"]) => Constant(1.0), Set(["C"]) => Constant(1.0))),
-#     ]),
-# ])
-
-# expr2 = simplify(expr)
-
-# println(repeat("%", 500))
-# # println(expr)
-# # println(repeat("-", 40))
-# # println(expr2)
-# x = expr2.args[1]
-# y = expr2.args[3]
-# println(x)
-# println(y)
-# println(x <= y)
+#=
+for ω = 3.0
+    omega_submodular_width = 1.666666666666667
+    1 + 2 * ω / (2ω + 3)   = 1.6666666666666665
+for ω = 2.0
+    omega_submodular_width = 1.5
+    1 + 2 * ω / (2ω + 3)   = 1.5714285714285714
+for ω = 2.5
+    omega_submodular_width = 1.6
+    1 + 2 * ω / (2ω + 3)   = 1.625
+=#
 
 end
