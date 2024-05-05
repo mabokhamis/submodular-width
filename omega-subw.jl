@@ -467,4 +467,14 @@ w = omega_submodular_width(H, ω; verbose = false)
 println(w)
 println(2 * ω / (ω + 1))
 
+# H = Hypergraph(
+#     ["A", "B1", "B2", "B3"],
+#     [["B1", "B2", "B3"], ["A", "B1"], ["A", "B2"], ["A", "B3"]]
+# )
+
+# ω = 3.0
+# w = omega_submodular_width(H, ω; verbose = false)
+# println(w)
+# println(1 + 2 * ω / (2ω + 3))
+
 end
