@@ -577,12 +577,12 @@ println(1 + 2 * ω / (2ω + 3))
 for ω = 3.0
     omega_submodular_width = 1.666666666666667
     1 + 2 * ω / (2ω + 3)   = 1.6666666666666665
-for ω = 2.0
-    omega_submodular_width = 1.5
-    1 + 2 * ω / (2ω + 3)   = 1.5714285714285714
 for ω = 2.5
     omega_submodular_width = 1.6
     1 + 2 * ω / (2ω + 3)   = 1.625
+for ω = 2.0
+    omega_submodular_width = 1.5
+    1 + 2 * ω / (2ω + 3)   = 1.5714285714285714
 =#
 
 end
