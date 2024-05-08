@@ -334,7 +334,7 @@ function _td_from_var_order(
         setdiff!(edges, contained_edges)
         # create a new edge whose variables are `bag` *minus* any variable that only
         # appears in `bag` (since these are private variables; note that `v` is one of them)
-        new_edge = intersect(bag, union(edges..., Set{T}()))
+        new_edge = intersect(bag, reduce(union!, edges; init = Set{T}()))
         push!(edges, new_edge)
     end
     return bags
@@ -552,7 +552,7 @@ function get_multivariate_extension(H::Hypergraph{T}, extras::Vector{T}) where T
     m = length(H.edges)
     E = Hypergraph{T}[]
     for p in permutations(1:m)
-        @show(p)
+        # @show(p)
         edges = deepcopy(H.edges)
         for (i, k) in enumerate(p)
             union!(edges[k], extras[2:min(i, m-1)])
@@ -573,7 +573,7 @@ function fractional_hypertree_width(E::Vector{Hypergraph{T}}) where T
             witness_reported = true
         end
         m = max(m, w)
-        println("$i: $m")
+        # println("$i: $m")
     end
     return m
 end
@@ -637,7 +637,20 @@ end
 # println("RESULT:", fractional_hypertree_width(E))
 # # Result: 1.5
 
-# ----------------------------------------------------------------------------
+# # ----------------------------------------------------------------------------
+
+# # Q_1'
+# H = Hypergraph(
+#     [:A, :B, :C, :D, :E, :E2, :F],
+#     [[:A, :B], [:B, :C], [:C, :D], [:B, :E], [:B, :E2], [:C, :F]],
+# )
+
+# E = get_multivariate_extension(H, [:Z1, :Z2, :Z3, :Z4, :Z5, :Z6])
+# @warn "$(length(E))"
+# println("RESULT:", fractional_hypertree_width(E))
+# # Result: 1.5
+
+# # ----------------------------------------------------------------------------
 
 # # Q_2
 # H = Hypergraph(
@@ -650,7 +663,7 @@ end
 # println("RESULT:", fractional_hypertree_width(E))
 # # Result: 1.5
 
-# ----------------------------------------------------------------------------
+# # ----------------------------------------------------------------------------
 
 # # Q_2'
 # H = Hypergraph(
@@ -663,7 +676,7 @@ end
 # println("RESULT:", fractional_hypertree_width(E))
 # # Result: 1.5
 
-# ----------------------------------------------------------------------------
+# # ----------------------------------------------------------------------------
 
 # # Q_2''
 # H = Hypergraph(
@@ -676,7 +689,7 @@ end
 # println("RESULT:", fractional_hypertree_width(E))
 # # Result: 5/3
 
-# ----------------------------------------------------------------------------
+# # ----------------------------------------------------------------------------
 
 # # Q_3
 # H = Hypergraph(
@@ -689,7 +702,7 @@ end
 # println("RESULT:", fractional_hypertree_width(E))
 # # Result: 5/3
 
-# ----------------------------------------------------------------------------
+# # ----------------------------------------------------------------------------
 
 # # Q_3'
 # H = Hypergraph(
