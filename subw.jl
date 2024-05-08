@@ -42,15 +42,14 @@ mutable struct Hypergraph{T}
         @assert(length(unique(vars)) == length(vars))
         var_index = Dict{T, Int}(var => i for (i, var) in enumerate(vars))
         edges = map(edge -> Set{T}(edge), edges)
-        shuffle!(tds)
-        tds = tds[1:min(length(tds), 6)]
+        @assert all(reduce(union!, edges; init = Set{T}()) == Set{T}(vars))
         return new{T}(vars, edges, weights, tds, var_index)
     end
 end
 
 function Base.show(io::IO, H::Hypergraph{T}) where T
     println(io, "Hypergraph with vertices: ", H.vars)
-    println("Hyperedges:")
+    println(io, "Hyperedges:")
     for edge ∈ H.edges
         println(io, sort(collect(edge)))
     end
@@ -556,10 +555,10 @@ function get_multivariate_extension(H::Hypergraph{T}, extras::Vector{T}) where T
         @show(p)
         edges = deepcopy(H.edges)
         for (i, k) in enumerate(p)
-            union!(edges[k], extras[1:i])
+            union!(edges[k], extras[2:min(i, m-1)])
         end
         edges = map(edge -> collect(edge), edges)
-        push!(E, Hypergraph(H.vars ∪ extras, edges))
+        push!(E, Hypergraph(H.vars ∪ extras[2:end-1], edges))
     end
     return E
 end
@@ -623,27 +622,15 @@ end
 
 # ----------------------------------------------------------------------------
 
-# H = Hypergraph(
-#     [:A, :B, :C, :D, :Z1, :Z2, :Z3, :Z4, :Z5],
-#     [
-#         [:A, :Z1],
-#         [:A, :B, :Z1, :Z2, :Z3, :Z4],
-#         [:B, :C, :Z1, :Z2],
-#         [:C, :D, :Z1, :Z2, :Z3],
-#         [:D, :Z1, :Z2, :Z3, :Z4, :Z5],
-#     ]
-# )
-# println(fractional_hypertree_width(H))
-
+# Q_1
 H = Hypergraph(
-    [:A, :B, :C, :Z1, :Z2, :Z3, :Z4],
-    [
-        [:A, :Z1, :Z2, :Z3],
-        [:A, :B, :Z1],
-        [:B, :C, :Z1, :Z2],
-        [:C, :Z1, :Z2, :Z3, :Z4],
-    ]
+    [:A, :B, :C, :D, :E, :F],
+    [[:A, :B], [:B, :C], [:C, :D], [:B, :E], [:C, :F]],
 )
-println(fractional_hypertree_width(H))
+
+E = get_multivariate_extension(H, [:Z1, :Z2, :Z3, :Z4, :Z5])
+@warn "$(length(E))"
+println("RESULT:", fractional_hypertree_width(E))
+
 
 end
