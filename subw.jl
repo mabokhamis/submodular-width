@@ -123,7 +123,7 @@ function fractional_hypertree_width(
     # for each tree decomposition `td` of `H`
     for (i, td) in enumerate(H.tds)
         # let `w` be the maximum fractional edge cover number among bags of `td`
-        w = max((fractional_edge_cover(collect(bag), H.edges) for bag in td)...,)
+        w = maximum(fractional_edge_cover(collect(bag), H.edges) for bag in td; init = 0.0)
         # find a `td` minimizing `w`; break ties by taking the `td` with the smallest
         # number of bags
         if w < fhtw - 1e-6 || abs(w-fhtw) <= 1e-6 && length(td) < length(H.tds[best_td])
@@ -133,9 +133,9 @@ function fractional_hypertree_width(
     end
     if verbose
         td = H.tds[best_td]
-        max((
+        maximum(
             fractional_edge_cover(collect(bag), H.edges; verbose = true)
-        for bag in td)...,)
+        for bag in td; init = 0.0)
     end
     return fhtw
 end
