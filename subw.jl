@@ -620,17 +620,86 @@ end
 # @warn "$(length(E))"
 # println("RESULT:", fractional_hypertree_width(E))
 
+
+
+# ======================================================================================== #
+# Ahmet's queries:
+# ================
+
+# # Q_1
+# H = Hypergraph(
+#     [:A, :B, :C, :D, :E, :F],
+#     [[:A, :B], [:B, :C], [:C, :D], [:B, :E], [:C, :F]],
+# )
+
+# E = get_multivariate_extension(H, [:Z1, :Z2, :Z3, :Z4, :Z5])
+# @warn "$(length(E))"
+# println("RESULT:", fractional_hypertree_width(E))
+# # Result: 1.5
+
 # ----------------------------------------------------------------------------
 
-# Q_1
-H = Hypergraph(
-    [:A, :B, :C, :D, :E, :F],
-    [[:A, :B], [:B, :C], [:C, :D], [:B, :E], [:C, :F]],
-)
+# # Q_2
+# H = Hypergraph(
+#     [:A, :B, :C],
+#     [[:A, :B, :C], [:A, :B], [:B, :C]],
+# )
 
-E = get_multivariate_extension(H, [:Z1, :Z2, :Z3, :Z4, :Z5])
-@warn "$(length(E))"
-println("RESULT:", fractional_hypertree_width(E))
+# E = get_multivariate_extension(H, [:Z1, :Z2, :Z3])
+# @warn "$(length(E))"
+# println("RESULT:", fractional_hypertree_width(E))
+# # Result: 1.5
 
+# ----------------------------------------------------------------------------
+
+# # Q_2'
+# H = Hypergraph(
+#     [:A, :B, :C, :D],
+#     [[:A, :B, :C, :D], [:A, :B], [:B, :C], [:C, :D]],
+# )
+
+# E = get_multivariate_extension(H, [:Z1, :Z2, :Z3, :Z4])
+# @warn "$(length(E))"
+# println("RESULT:", fractional_hypertree_width(E))
+# # Result: 1.5
+
+# ----------------------------------------------------------------------------
+
+# # Q_2''
+# H = Hypergraph(
+#     [:A, :B, :C, :D],
+#     [[:A, :B, :C, :D], [:A, :B], [:B, :C], [:B, :D]],
+# )
+
+# E = get_multivariate_extension(H, [:Z1, :Z2, :Z3, :Z4])
+# @warn "$(length(E))"
+# println("RESULT:", fractional_hypertree_width(E))
+# # Result: 5/3
+
+# ----------------------------------------------------------------------------
+
+# # Q_3
+# H = Hypergraph(
+#     [:A, :B, :C],
+#     [[:A, :B, :C], [:A], [:B], [:C]],
+# )
+
+# E = get_multivariate_extension(H, [:Z1, :Z2, :Z3, :Z4])
+# @warn "$(length(E))"
+# println("RESULT:", fractional_hypertree_width(E))
+# # Result: 5/3
+
+# ----------------------------------------------------------------------------
+
+# # Q_3'
+# H = Hypergraph(
+#     [:A, :B, :C, :D],
+#     [[:A, :B, :C, :D], [:A], [:B], [:C], [:D]],
+# )
+
+# E = get_multivariate_extension(H, [:Z1, :Z2, :Z3, :Z4, :Z5])
+# @warn "$(length(E))"
+# println("RESULT:", fractional_hypertree_width(E))
+# # Result: 1:75
 
 end
