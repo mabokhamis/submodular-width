@@ -605,7 +605,7 @@ H = Hypergraph(
     [["A", "B"], ["A", "C"], ["A", "D"], ["B", "C"], ["B", "D"], ["C", "D"]]
 )
 
-ω = 2.5
+ω = 2.0
 w = omega_submodular_width(H, ω; verbose = false)
 println(w)
 println((ω + 1)/2)
