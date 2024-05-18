@@ -38,6 +38,7 @@ mutable struct Hypergraph{T}
         var_index = Dict{T, Int}(var => i for (i, var) in enumerate(vars))
         @assert all(e ⊆ vars for e in edges)
         edges = map(edge -> Set{T}(edge), edges)
+        @assert all(reduce(union!, edges; init = Set{T}()) == Set{T}(vars))
         return new{T}(vars, edges, var_index)
     end
 end
@@ -97,7 +98,7 @@ struct Constant
     value::Float64
     symbol::String
 
-    Constant(value::Float64, symbol::String = string(value)) = new(value, symbol)
+    Constant(value::Number, symbol::String = string(value)) = new(Float64(value), symbol)
 end
 
 Base.:(==)(x::Constant, y::Constant) = x.value == y.value
@@ -300,7 +301,7 @@ function create_matrix_multiplication(
     Y::Set{T},
     Z::Set{T},
     W::Set{T},
-    ω::Float64
+    ω::Number
 ) where T
     @assert isempty(X ∩ Y) && isempty(X ∩ Z) && isempty(X ∩ W) && isempty(Y ∩ Z) &&
         isempty(Y ∩ W) && isempty(Z ∩ W)
@@ -331,7 +332,7 @@ end
 # e = create_matrix_multiplication(Set(["A"]), Set(["B"]), Set(["C"]), Set{String}(), 2.5)
 # println(simplify(e))
 
-function eliminate_variable(H::Hypergraph{T}, x::T, ω::Float64) where T
+function eliminate_variable(H::Hypergraph{T}, x::T, ω::Number) where T
     Nx = [E for E ∈ H.edges if x ∈ E]
     Px = [E for E ∈ H.edges if x ∉ E]
     U = reduce(union!, Nx; init = Set{T}())
@@ -362,7 +363,7 @@ function eliminate_variable(H::Hypergraph{T}, x::T, ω::Float64) where T
     return new_H, expr
 end
 
-function eliminate_variables(H::Hypergraph{T}, ω::Float64) where T
+function eliminate_variables(H::Hypergraph{T}, ω::Number) where T
     min_args = Vector{Term{T}}()
     for π ∈ permutations(H.vars)
         new_H = H
@@ -539,7 +540,7 @@ end
 
 # println(omega_submodular_width(H, m; verbose = true))
 
-function omega_submodular_width(H::Hypergraph{T}, ω::Float64; verbose::Bool = true) where T
+function omega_submodular_width(H::Hypergraph{T}, ω::Number; verbose::Bool = true) where T
     expr = eliminate_variables(H, ω)
     println(expr)
     @assert expr isa Max
@@ -551,27 +552,29 @@ function omega_submodular_width(H::Hypergraph{T}, ω::Float64; verbose::Bool = t
     return width
 end
 
-H = Hypergraph(
-    ["A", "B", "C"],
-    [["A", "B"], ["B", "C"], ["A", "C"]]
-)
+#-----------------------------------------------
 
-# ω = 3.0
+# H = Hypergraph(
+#     ["A", "B", "C"],
+#     [["A", "B"], ["B", "C"], ["A", "C"]]
+# )
+
+# ω = 2
 # w = omega_submodular_width(H, ω; verbose = false)
 # println(w)
 # println(2 * ω / (ω + 1))
 
 #-----------------------------------------------
 
-H = Hypergraph(
-    ["A", "B1", "B2", "B3"],
-    [["B1", "B2", "B3"], ["A", "B1"], ["A", "B2"], ["A", "B3"]]
-)
+# H = Hypergraph(
+#     ["A", "B1", "B2", "B3"],
+#     [["B1", "B2", "B3"], ["A", "B1"], ["A", "B2"], ["A", "B3"]]
+# )
 
-ω = 2.5
-w = omega_submodular_width(H, ω; verbose = false)
-println(w)
-println(1 + 2 * ω / (2ω + 3))
+# ω = 2.5
+# w = omega_submodular_width(H, ω; verbose = false)
+# println(w)
+# println(1 + 2 * ω / (2ω + 3))
 
 #=
 for ω = 3.0
@@ -584,5 +587,17 @@ for ω = 2.0
     omega_submodular_width = 1.5
     1 + 2 * ω / (2ω + 3)   = 1.5714285714285714
 =#
+
+#-----------------------------------------------
+
+H = Hypergraph(
+    ["A", "B", "C", "D"],
+    [["A", "B"], ["A", "C"], ["A", "D"], ["B", "C"], ["B", "D"], ["C", "D"]]
+)
+
+ω = 3
+w = omega_submodular_width(H, ω; verbose = false)
+println(w)
+println((ω + 1)/2)
 
 end
