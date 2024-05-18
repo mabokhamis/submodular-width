@@ -208,9 +208,9 @@ function minimal_args(args::Vector{<:Term{T}}; subsumed_by::Function = _min_subs
     return new_args
 end
 
-_simplify(s::Sum) = (false, s)
+_simplify(s::Sum, quick::Bool) = (false, s)
 
-function _simplify(m::Union{Min{T},Max{T}}) where T
+function _simplify(m::Union{Min{T},Max{T}}, quick::Bool) where T
     new_args = unique(m.args)
     if length(new_args) != length(m.args)
         return (true, typeof(m)(new_args))
@@ -228,9 +228,13 @@ function _simplify(m::Union{Min{T},Max{T}}) where T
         return (true, typeof(m)(new_args))
     end
 
-    if m isa Min || m isa Max
+    quick && return (false, m)
+
+    if (m isa Min || m isa Max) && length(m.args) <= 1000
+        println("A: $(length(m.args))")
         new_args = minimal_args(m.args;
             subsumed_by = m isa Min ? _min_subsumed_by : _max_subsumed_by)
+        println("A: End")
         if length(new_args) != length(m.args)
             return (true, typeof(m)(new_args))
         end
@@ -238,36 +242,40 @@ function _simplify(m::Union{Min{T},Max{T}}) where T
 
     if m isa Min && any(arg isa Max for arg ∈ m.args)
         new_args = Vector{Vector{Term{T}}}()
+        num_args = 1
         for arg ∈ m.args
             if arg isa Max
                 push!(new_args, arg.args)
+                num_args *= length(arg.args)
             else
                 push!(new_args, [arg])
             end
         end
+        println("B: $num_args")
         selectors = Iterators.product(new_args...,)
         new_args = Vector{Term{T}}()
         for β ∈ selectors
             push!(new_args, Min(collect(β)))
         end
+        println("B: End")
         return (true, Max(new_args))
     end
 
     return (false, m)
 end
 
-function simplify(t::Term{T}) where T
+function simplify(t::Term{T}, quick::Bool = false) where T
     if t isa Min || t isa Max
-        new_args = [simplify(arg) for arg ∈ t.args]
+        new_args = [simplify(arg, quick) for arg ∈ t.args]
         t = typeof(t)(new_args)
     end
     rewritten = false
     b = true
     while b
-        (b, t) = _simplify(t)
+        (b, t) = _simplify(t, quick)
         rewritten |= b
     end
-    return rewritten ? simplify(t) : t
+    return rewritten ? simplify(t, true) : t
 end
 
 # exp =
@@ -505,6 +513,7 @@ function omega_submodular_width(H::Hypergraph{T}, m::Min{T}; verbose::Bool = tru
 
     verbose && println("\nObjective Constraints:")
     for s ∈ m.args
+        @assert s isa Sum
         @constraint(model, w ≤ sum(c.value * h[zip(H, X)] for (X, c) ∈ s.args))
         verbose && println("w ≤ $(join(["$(c.value) * $(f(zip(H, X)))" for (X, c) ∈ s.args], " + "))")
     end
@@ -545,7 +554,8 @@ function omega_submodular_width(H::Hypergraph{T}, ω::Number; verbose::Bool = tr
     println(expr)
     @assert expr isa Max
     width = 0.0
-    for arg ∈ expr.args
+    for (i, arg) ∈ enumerate(expr.args)
+        println("C: $i of $(length(expr.args))")
         @assert arg isa Min
         width = max(width, omega_submodular_width(H, arg; verbose = verbose))
     end
@@ -595,9 +605,21 @@ H = Hypergraph(
     [["A", "B"], ["A", "C"], ["A", "D"], ["B", "C"], ["B", "D"], ["C", "D"]]
 )
 
-ω = 3
+ω = 2.5
 w = omega_submodular_width(H, ω; verbose = false)
 println(w)
 println((ω + 1)/2)
+
+#=
+for ω = 3.0
+    omega_submodular_width = 2
+    (ω + 1)/2   = 2
+for ω = 2.5
+    omega_submodular_width = ?
+    (ω + 1)/2   = 1.75
+for ω = 2.0
+    omega_submodular_width = 1.6666666666666
+    (ω + 1)/2   = 1.5
+=#
 
 end
