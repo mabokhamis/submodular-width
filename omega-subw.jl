@@ -551,11 +551,11 @@ end
 
 function omega_submodular_width(H::Hypergraph{T}, ω::Number; verbose::Bool = true) where T
     expr = eliminate_variables(H, ω)
-    println(expr)
+    # println(expr)
     @assert expr isa Max
     width = 0.0
     for (i, arg) ∈ enumerate(expr.args)
-        println("C: $i of $(length(expr.args))")
+        (i%10 == 1) && println("C: $i of $(length(expr.args))")
         @assert arg isa Min
         width = max(width, omega_submodular_width(H, arg; verbose = verbose))
     end
@@ -581,7 +581,7 @@ end
 #     [["B1", "B2", "B3"], ["A", "B1"], ["A", "B2"], ["A", "B3"]]
 # )
 
-# ω = 2.5
+# ω = 2
 # w = omega_submodular_width(H, ω; verbose = false)
 # println(w)
 # println(1 + 2 * ω / (2ω + 3))
@@ -615,7 +615,7 @@ for ω = 3.0
     omega_submodular_width = 2
     (ω + 1)/2   = 2
 for ω = 2.5
-    omega_submodular_width = ?
+    omega_submodular_width = 1.8571428571428577
     (ω + 1)/2   = 1.75
 for ω = 2.0
     omega_submodular_width = 1.6666666666666
