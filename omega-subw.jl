@@ -340,9 +340,9 @@ end
 # e = create_matrix_multiplication(Set(["A"]), Set(["B"]), Set(["C"]), Set{String}(), 2.5)
 # println(simplify(e))
 
-function eliminate_variable(H::Hypergraph{T}, x::T, ω::Number) where T
-    Nx = [E for E ∈ H.edges if x ∈ E]
-    Px = [E for E ∈ H.edges if x ∉ E]
+function eliminate_variable(H::Hypergraph{T}, x::Set{T}, ω::Number) where T
+    Nx = [E for E ∈ H.edges if !isempty(x ∩ E)]
+    Px = [E for E ∈ H.edges if isempty(x ∩ E)]
     U = reduce(union!, Nx; init = Set{T}())
     P = copy(U)
     for E ∈ Px
@@ -371,14 +371,36 @@ function eliminate_variable(H::Hypergraph{T}, x::T, ω::Number) where T
     return new_H, expr
 end
 
+function generalized_var_elimination_orders(V::Union{Set{T},Vector{T}}) where T
+    V = collect(V)
+    @assert length(unique(V)) == length(V)
+    @assert !isempty(V)
+    result = Vector{Vector{Set{T}}}()
+    for X ∈ powerset(V)
+        isempty(X) && continue
+        Y = setdiff(V, X)
+        if isempty(Y)
+            push!(result, [Set{T}(X)])
+        else
+            result2 = generalized_var_elimination_orders(Y)
+            for Z in result2
+                push!(result, [Set{T}(X); Z])
+            end
+        end
+    end
+    return result
+end
+
 function eliminate_variables(H::Hypergraph{T}, ω::Number) where T
     min_args = Vector{Term{T}}()
-    for π ∈ permutations(H.vars)
+    VOs = generalized_var_elimination_orders(H.vars)
+    for π ∈ VOs
         new_H = H
         max_args = Vector{Term{T}}()
         for x ∈ π
-            x ∈ new_H.vars || continue
-            (new_H, expr) = eliminate_variable(new_H, x, ω)
+            y = x ∩ new_H.vars
+            isempty(y) && continue
+            (new_H, expr) = eliminate_variable(new_H, y, ω)
             push!(max_args, expr)
         end
         arg = Max(max_args)
