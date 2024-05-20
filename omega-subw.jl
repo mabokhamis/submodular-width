@@ -231,10 +231,10 @@ function _simplify(m::Union{Min{T},Max{T}}, quick::Bool) where T
     quick && return (false, m)
 
     if (m isa Min || m isa Max) && length(m.args) <= 1000
-        println("A: $(length(m.args))")
+        println("A: Start $(length(m.args))")
         new_args = minimal_args(m.args;
             subsumed_by = m isa Min ? _min_subsumed_by : _max_subsumed_by)
-        println("A: End")
+        println("A: End $(length(new_args))")
         if length(new_args) != length(m.args)
             return (true, typeof(m)(new_args))
         end
@@ -315,24 +315,25 @@ function create_matrix_multiplication(
         isempty(Y ∩ W) && isempty(Z ∩ W)
     one = Constant(1.0)
     ω2 = Constant(ω-2, "ω'")
+    α = Constant(-ω+1, "α")
     return Max([
         Sum(Dict(
-            X => one,
-            Y => one,
-            Z => ω2,
-            W => one,
+            X ∪ W => one,
+            Y ∪ W=> one,
+            Z ∪ W=> ω2,
+            W => α,
         )),
         Sum(Dict(
-            X => one,
-            Y => ω2,
-            Z => one,
-            W => one,
+            X ∪ W => one,
+            Y ∪ W => ω2,
+            Z ∪ W => one,
+            W => α,
         )),
         Sum(Dict(
-            X => ω2,
-            Y => one,
-            Z => one,
-            W => one,
+            X ∪ W => ω2,
+            Y ∪ W => one,
+            Z ∪ W => one,
+            W => α,
         )),
     ])
 end
@@ -394,7 +395,13 @@ end
 function eliminate_variables(H::Hypergraph{T}, ω::Number) where T
     min_args = Vector{Term{T}}()
     VOs = generalized_var_elimination_orders(H.vars)
+    # VOs = [
+    #     [Set(["B"]), Set(["C"]), Set(["D"]), Set(["A"])],
+    #     [Set(["C"]), Set(["D"]), Set(["B"]), Set(["A"])],
+    #     [Set(["D"]), Set(["B"]), Set(["C"]), Set(["A"])],
+    # ]
     for π ∈ VOs
+        # any(length(x) > 1 for x ∈ π) && continue
         new_H = H
         max_args = Vector{Term{T}}()
         for x ∈ π
@@ -530,6 +537,14 @@ function omega_submodular_width(H::Hypergraph{T}, m::Min{T}; verbose::Bool = tru
         @constraint(model, h[E] ≤ 1.0)
         verbose && println("$(f(E)) ≤ 1.0")
     end
+
+    # verbose && println("\nDegree-case Constraints:")
+    # v = first(H.vars)
+    # # for v in H.vars
+    #     E = zip(H, Set{T}((v,)))
+    #     @constraint(model, h[E] ≥ 0.5)
+    #     verbose && println("$(f(E)) ≥ 0.5")
+    # # end
 
     @variable(model, w >= 0.0)
 
