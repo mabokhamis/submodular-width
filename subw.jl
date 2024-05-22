@@ -451,6 +451,9 @@ function get_all_bag_selectors(tds::Vector{Vector{Set{T}}}) where T
     return selectors
 end
 
+#----------------------------------------------
+# 4-cycle:
+# --------
 # println(repeat("=", 80))
 # H = Hypergraph(
 #     [1, 2, 3, 4],
@@ -460,6 +463,9 @@ end
 # @show(fractional_hypertree_width(H))
 # @show(submodular_width(H))
 
+#----------------------------------------------
+# 5-cycle:
+# --------
 # println(repeat("=", 80))
 # H = Hypergraph(
 #     [1, 2, 3, 4, 5],
@@ -469,6 +475,9 @@ end
 # @show(fractional_hypertree_width(H))
 # @show(submodular_width(H))
 
+#----------------------------------------------
+# 6-cycle:
+# --------
 # println(repeat("=", 80))
 # H = Hypergraph(
 #     [1, 2, 3, 4, 5, 6],
@@ -478,6 +487,7 @@ end
 # @show(fractional_hypertree_width(H))
 # @show(submodular_width(H))
 
+#----------------------------------------------
 println(repeat("=", 80))
 H = Hypergraph(
     ['x', 'y', 'z', 'u', 'v', 'w'],
@@ -492,113 +502,12 @@ H = Hypergraph(
 @show(fractional_hypertree_width(H))
 @show(submodular_width(H))
 
-# H2 = Hypergraph(
-#     [1, 2, 3, 4, 5, 6],
-#     [
-#         [1, 2], [1, 3], [2, 3], [4, 5], [5, 6], [4, 6],
-#         [1, 5], [1, 6], [2, 4], [2, 6], [3, 4], [3, 5],
-#     ]
-# )
-# println(fractional_hypertree_width(H2))
-# println(submodular_width(H2))
 
-# H3 = Hypergraph(
-#     [1, 2, 3, 4, 5, 6, 7, 8],
-#     [
-#         [1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 7], [7, 8], [8, 1],
-#         [1, 5], [2, 6], [3, 7], [4, 8],
-#     ],
-# )
 
-# println(submodular_width(H3))
-
-# H4 = Hypergraph(
-#     [1, 2, 3, 4, 5, 6, 7, 8],
-#     [
-#         [1, 3], [1, 4], [1, 5], [2, 3], [2, 4], [2, 5], [3, 6], [3, 7], [4, 6], [4, 8],
-#         [5, 7], [5, 8]
-#     ],
-# )
-# println(fractional_hypertree_width(H4))
-# println(submodular_width(H4))
-
-# H5 = Hypergraph(
-#     [1, 2, 3, 4, 5, 6, 7, 8 ,9, 10, 11, 12],
-#     [
-#         [1, 2], [2, 4], [1, 3], [3, 4],
-#         [4, 5], [5, 7], [4, 6], [6, 7],
-#         [7, 9], [9, 10], [7, 8], [8, 10],
-#         [10, 11], [11, 1], [10, 12], [12, 1]
-#     ]
-# )
-
-# println(fractional_hypertree_width(H5))
-# println(submodular_width(H5))
-
-# α = 8/13
-
-# Ha = Hypergraph(
-#     [1, 2, 3, 4],
-#     [[1, 2], [2, 3], [3, 4], [4, 1]];
-#     weights = [1+α, 1+α, 1+α, 1+α]
-# )
-
-# println(submodular_width(Ha))
-
-# Hb = Hypergraph(
-#     [1, 2, 3, 4, 5, 6, 7, 8],
-#     [[1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 7], [7, 8], [8, 1]];
-#     weights = [2-α, 2-α, 2-α, 2-α, 2-α, 2-α, 2-α, 2-α]
-# )
-# println(submodular_width(Hb))
-
-# Hc = Hypergraph(
-#     [1, 2, 3, 4, 5],
-#     [[1, 2], [2, 3], [3, 4], [4, 5], [5, 1]];
-#     weights = [1+α, 1+α, 1+α, 2-α, 2-α]
-# )
-
-# println(submodular_width(Hc))
-
-# Hd = Hypergraph(
-#     [1, 2, 3, 4, 5, 6],
-#     [[1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 1]];
-#     weights = [1+α, 1+α, 2-α, 2-α, 2-α, 2-α]
-# )
-
-# println(submodular_width(Hd))
-
-# tds = [
-#     Set{Int64}[Set([5, 6, 7, 2]), Set([5, 7, 8, 3, 1]), Set([4, 8, 3, 1]), Set([5, 7, 2, 3, 1])],
-#     Set{Int64}[Set([6, 2, 3, 1]), Set([5, 4, 7, 3, 1]), Set([5, 4, 7, 8]), Set([5, 6, 7, 3, 1])],
-#     # Set{Int64}[Set([4, 8, 3, 1]), Set([5, 6, 2, 8, 3]), Set([5, 2, 8, 3, 1]), Set([6, 7, 8, 3])],
-#     Set{Int64}[Set([6, 8, 3, 1]), Set([6, 2, 3, 1]), Set([4, 8, 3, 1]), Set([5, 6, 8, 1]), Set([6, 7, 8, 3])],
-#     Set{Int64}[Set([4, 7, 2, 3]), Set([5, 6, 7, 2]), Set([5, 4, 7, 2]), Set([5, 4, 2, 1]), Set([5, 4, 7, 8])],
-#     # Set{Int64}[Set([4, 6, 2, 8, 3]), Set([5, 4, 2, 1]), Set([5, 4, 6, 2, 8]), Set([6, 7, 8, 3])],
-# ]
-
-# pretty_tds = [map(bag -> collect(bag), td) for td in tds]
-# for td in pretty_tds
-#     for bag in td
-#         sort!(bag)
-#     end
-#     sort!(td)
-#     println(td)
-# end
-# println()
-
-# HC = Hypergraph(
-#     [1, 2, 3, 4, 5, 6, 7, 8],
-#     [
-#         [1, 2], [2, 3], [3, 4], [4, 1],
-#         [5, 6], [6, 7], [7, 8], [8, 5],
-#         [1, 5], [2, 6], [3, 7], [4, 8]
-#     ];
-#     tds = tds
-# )
-
-# # println(fractional_hypertree_width(HC))
-# println(submodular_width(HC))
+#=========================================================================================#
+# The following section is about computing the fractional hypertree width of a _multivariate
+# extension_ of a query. Multivariate extensions are defined in [this
+# paper](https://arxiv.org/abs/2312.09331)
 
 function get_multivariate_extension(H::Hypergraph{T}, extras::Vector{T}) where T
     @assert isempty(extras ∩ H.vars) && length(extras) == length(H.edges)
@@ -631,7 +540,7 @@ function fractional_hypertree_width(E::Vector{Hypergraph{T}}) where T
     return m
 end
 
-# ----------------------------------------------------------------------------
+# ------------------------------------------------------------------------------------
 
 # H = Hypergraph(
 #     [1, 2, 3, 4],
@@ -675,7 +584,7 @@ end
 
 
 
-# ======================================================================================== #
+# ------------------------------------------------------------------------------------
 # Ahmet's queries:
 # ================
 
@@ -767,5 +676,7 @@ end
 # @warn "$(length(E))"
 # println("RESULT:", fractional_hypertree_width(E))
 # # Result: 1:75
+
+#=========================================================================================#
 
 end
