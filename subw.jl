@@ -647,8 +647,8 @@ fds = FD{Char}[
     FD(['w', 'x'], ['z']),
 ]
 println(fds)
-println("Submodular width *WITHOUT* FDs: $(submodular_width(H))\n")
-println("Submodular width *WITH*    FDs: $(submodular_width(H; fds))\n")
+println("Submodular width *WITHOUT* FDs: $(submodular_width(H))\n")      # 1.75
+println("Submodular width *WITH*    FDs: $(submodular_width(H; fds))\n") # 1.5
 
 
 
