@@ -179,17 +179,13 @@ function unzip(H::Hypergraph{T}, z::Int)::Set{T} where T
 end
 
 """
-    submodular_width(H, [sharp = false], [verbose = false])
+    submodular_width(H; [verbose = false])
 
 Given a hypergraph `H` compute its submodular width. The submodular width is computed
 using equation (106) in [this paper](https://arxiv.org/pdf/1612.02503v4.pdf).
-
-    -`sharp` indicates whether we want to use the `#-submodular width` instead. See
-    [the FAQ-AI paper](https://arxiv.org/abs/1812.09526) for more details.
 """
 function submodular_width(
     H::Hypergraph{T};
-    sharp::Bool = false,
     verbose::Bool = false,
 ) where T
     n = length(H.vars)
@@ -221,7 +217,7 @@ function submodular_width(
 
         # For each `X ⊆ Y ⊆ V`, the LP contains a constraint `h[X] ≤ h[Y]`. These are called
         # "monotonicity constraints"
-        verbose && println("\n(Basic) Monotonicity Constraints:")
+        verbose && println("\n(Elemental) Monotonicity Constraints:")
         for y = 0:n-1
             Y = N - 1
             X = Y & ~(1 << y)
@@ -234,36 +230,18 @@ function submodular_width(
         # "submodularity constraints". (Alternatively they can formulated as follows
         # using "conditional entropy" notation: `h[Y | Y ∩ Z] ≥ h[Y ∪ Z | Z]`.)
 
-        verbose && println("\nSubmodularity Constraints:")
-        if sharp
-            # In "#-submodular width" case, only a subset of the above submodularity
-            # constraints are actually included in the LP. See Definitions 3.12 and 3.13
-            # in [this paper](https://arxiv.org/pdf/1812.09526v3.pdf)
-            for X = 0:N-1
-                if any(issubset(unzip(H, X), edge) for edge in H.edges)
-                    for Y = 0:N-1, Z = Y+1:N-1
-                        if (Y & X == X) && (Z & X == X) && Y != X && Z != X
-                            W = Y | Z
-                            @constraint(model, h[Y] + h[Z] - h[X] - h[W] >= 0.0)
-                            verbose && println("h[$(f(Y))] + h[$(f(Z))] - h[$(f(X))] - h[$(f(W))] >= 0.0")
-                        end
-                    end
-                end
-            end
-        else
-            # In the (non-sharp) submodular width case, all of the above submodularity
-            # constraints are actually included in the LP. However, some of these
-            # constraints can be inferred from others. Hence it suffices to include a
-            # minimal subset of the submodularity constraints that is sufficient to infer
-            # all the others, which is what we do below.
-            for X = 0:N-1, y = 0:n-1, z = y+1:n-1
-                if (X & (1 << y) == 0) && (X & (1 << z) == 0)
-                    Y = X | (1 << y)
-                    Z = X | (1 << z)
-                    W = Y | (1 << z)
-                    @constraint(model, h[Y] + h[Z] - h[X] - h[W] ≥ 0.0)
-                    verbose && println("$(f(Y)) + $(f(Z)) - $(f(X)) - $(f(W)) ≥ 0.0")
-                end
+        verbose && println("\n(Elemental) Submodularity Constraints:")
+        # In the submodular width case, all of the above submodularity constraints are
+        # actually included in the LP. However, some of these constraints can be inferred
+        # from others. Hence it suffices to include a minimal subset of the submodularity
+        # constraints that is sufficient to infer all the others, which is what we do below.
+        for X = 0:N-1, y = 0:n-1, z = y+1:n-1
+            if (X & (1 << y) == 0) && (X & (1 << z) == 0)
+                Y = X | (1 << y)
+                Z = X | (1 << z)
+                W = Y | (1 << z)
+                @constraint(model, h[Y] + h[Z] - h[X] - h[W] ≥ 0.0)
+                verbose && println("$(f(Y)) + $(f(Z)) - $(f(X)) - $(f(W)) ≥ 0.0")
             end
         end
 
