@@ -323,11 +323,12 @@ function submodular_width(
 
         # Finally, we set the objective of the LP to maximize `W`
         @objective(model, Max, w)
+        verbose && println("\nObjective: Maximize w")
 
         optimize!(model)
         @assert termination_status(model) == MathOptInterface.OPTIMAL
         obj = objective_value(model)
-        verbose && println("\nObjective Value: $obj")
+        verbose && println("\nOptimal Objective Value: $obj")
         result = max(result, obj)
         if counter % 100 == 0
             println("        Bag selector $counter/$(length(selectors)): submodular width so far is at least $result")
