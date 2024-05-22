@@ -27,7 +27,6 @@ fields:
 mutable struct Hypergraph{T}
     vars::Vector{T}
     edges::Vector{Set{T}}
-    weights::Vector{Float64}
     tds::Vector{Vector{Set{T}}}
 
     # `var_index` maps a vertex `vars[i]` in `vars` to its index `i`
@@ -36,14 +35,13 @@ mutable struct Hypergraph{T}
     function Hypergraph(
         vars::Vector{T},
         edges::Vector{Vector{T}};
-        weights::Vector{Float64} = ones(length(edges)),
         tds::Vector{Vector{Set{T}}} = get_tds(edges)
     ) where T
         @assert(length(unique(vars)) == length(vars))
         var_index = Dict{T, Int}(var => i for (i, var) in enumerate(vars))
         edges = map(edge -> Set{T}(edge), edges)
         @assert all(reduce(union!, edges; init = Set{T}()) == Set{T}(vars))
-        return new{T}(vars, edges, weights, tds, var_index)
+        return new{T}(vars, edges, tds, var_index)
     end
 end
 
@@ -195,8 +193,8 @@ function submodular_width(
     # To compute the submodular width of `H`, we have to solve a linear program for each
     # combination of bags `(bag1, bag2, ⋯, bag_k)` where `bag1 ∈ td1, bag2 ∈ td2, …,`
     # `bag_k ∈ td_k` and take the maximum value across all such combinations.
-    # selectors = get_all_bag_selectors(H.tds)
-    selectors = Iterators.product(H.tds...,)
+    selectors = get_all_bag_selectors(H.tds)
+    # selectors = Iterators.product(H.tds...,)
     @show(length(selectors))
     counter = 0
     for β in selectors
@@ -207,7 +205,7 @@ function submodular_width(
 
         # Let `V` be the set of vertices of `H`. For each subset `U ⊆ V`, the LP contains a
         # corresponding variable `h[U]`
-        @variable(model, h[0:N] >= 0.0)
+        @variable(model, h[0:N-1])
 
         # The LP contains the constraint `h[∅] = 0`
         verbose && println("\nZero Constraint:")
@@ -216,13 +214,12 @@ function submodular_width(
 
         # For each `X ⊆ Y ⊆ V`, the LP contains a constraint `h[X] ≤ h[Y]`. These are called
         # "monotonicity constraints"
-        verbose && println("\nMonotonicity Constraints:")
-        for X = 0:N-1, y = 0:n-1
-            if X & (1 << y) == 0
-                Y = X | (1 << y)
-                @constraint(model, h[Y] - h[X] >= 0.0)
-                verbose && println("h[$(f(Y))] - h[$(f(X))] >= 0.0")
-            end
+        verbose && println("\n(Basic) Monotonicity Constraints:")
+        for y = 0:n-1
+            Y = N - 1
+            X = Y & ~(1 << y)
+            @constraint(model, h[Y] - h[X] ≥ 0.0)
+            verbose && println("$(f(Y)) - $(f(X)) ≥ 0.0")
         end
 
         # For each `Y, Z ⊆ V` where `Y` and `Z` are not contained in one another, the LP
@@ -257,8 +254,8 @@ function submodular_width(
                     Y = X | (1 << y)
                     Z = X | (1 << z)
                     W = Y | (1 << z)
-                    @constraint(model, h[Y] + h[Z] - h[X] - h[W] >= 0.0)
-                    verbose && println("h[$(f(Y))] + h[$(f(Z))] - h[$(f(X))] - h[$(f(W))] >= 0.0")
+                    @constraint(model, h[Y] + h[Z] - h[X] - h[W] ≥ 0.0)
+                    verbose && println("$(f(Y)) + $(f(Z)) - $(f(X)) - $(f(W)) ≥ 0.0")
                 end
             end
         end
@@ -266,24 +263,27 @@ function submodular_width(
         # For each hyperedge `e` in `H`, the LP contains a constraint `h[e] ≤ 1.0`. These
         # are called "edge-domination" constraints.
         verbose && println("\nEdge-domination Constraints:")
-        for (i, edge) in enumerate(H.edges)
+        for edge in H.edges
             E = zip(H, edge)
-            @constraint(model, h[E] <= H.weights[i])
-            verbose && println("h[$(f(E))] <= $(H.weights[i])")
+            @constraint(model, h[E] ≤ 1.0)
+            verbose && println("$(f(E)) ≤ 1.0")
         end
 
         # The actual objective of the LP is to maximize the minimum value among
-        # `h[bag1], h[bag2], …, h[bag_k]`. To that end, we add to the LP a new variable `W`
-        # along with the constraints `W ≤ h[bag1], W ≤ h[bag2], …, W ≤ h[bag_k]`
+        # `h[bag1], h[bag2], …, h[bag_k]`. To that end, we add to the LP a new variable `w`
+        # along with the constraints `w ≤ h[bag1], w ≤ h[bag2], …, w ≤ h[bag_k]`
+
+        @variable(model, w >= 0.0)
+
         verbose && println("\nMin-target Constraints:")
         for target in β
             B = zip(H, target)
-            @constraint(model, h[N] <= h[B])
-            verbose && println("W <= h[$(f(B))]")
+            @constraint(model, w <= h[B])
+            verbose && println("w <= h[$(f(B))]")
         end
 
         # Finally, we set the objective of the LP to maximize `W`
-        @objective(model, Max, h[N])
+        @objective(model, Max, w)
 
         optimize!(model)
         @assert termination_status(model) == MathOptInterface.OPTIMAL
@@ -423,6 +423,7 @@ end
 
 function get_all_bag_selectors(tds::Vector{Vector{Set{T}}}) where T
     selectors = [[bag1] for bag1 ∈ first(tds)]
+    @show length(tds)
     for i = 2:length(tds)
         @warn "$i"
         selectors = get_bag_selectors(selectors, tds[i])
@@ -431,9 +432,33 @@ function get_all_bag_selectors(tds::Vector{Vector{Set{T}}}) where T
     return selectors
 end
 
+H = Hypergraph(
+    [1, 2, 3, 4],
+    [[1, 2], [2, 3], [3, 4], [4, 1]]
+)
+
+println(fractional_hypertree_width(H))
+println(submodular_width(H))
+
 # H = Hypergraph(
-#     [1, 2, 3, 4],
-#     [[1, 2], [2, 3], [3, 4], [4, 1]]
+#     [1, 2, 3, 4, 5],
+#     [[1, 2], [2, 3], [3, 4], [4, 5], [5, 1]]
+# )
+
+# println(fractional_hypertree_width(H))
+# println(submodular_width(H))
+
+# H = Hypergraph(
+#     [1, 2, 3, 4, 5, 6],
+#     [[1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 1]]
+# )
+
+# println(fractional_hypertree_width(H))
+# println(submodular_width(H))
+
+# H = Hypergraph(
+#     [1, 2, 3, 4, 5, 6, 7],
+#     [[1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 7], [7, 1]]
 # )
 
 # println(fractional_hypertree_width(H))
