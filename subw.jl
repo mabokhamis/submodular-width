@@ -61,6 +61,43 @@ function Base.show(io::IO, H::Hypergraph{T}) where T
 end
 
 """
+    FD{T}
+
+A functional dependency (FD) `X → Y` where `X` and `Y` are sets of vertices of the query's
+hypergraph
+"""
+struct FD{T}
+    X::Set{T}
+    Y::Set{T}
+
+    function FD(X::Vector{T}, Y::Vector{T}) where T
+        @assert length(unique(X)) == length(X) """
+        In an FD `$X → $Y`, the variables in `$X` must be unique
+        """
+        @assert length(unique(Y)) == length(Y) """
+        In an FD `$X → $Y`, the variables in `$Y` must be unique
+        """
+        @assert isdisjoint(X, Y) """
+        In an FD `$X → $Y`, the sets `$X and `$Y` must be disjoint
+        """
+        return new{T}(Set{T}(X), Set{T}(Y) ∪ Set{T}(X))
+    end
+end
+
+function Base.show(io::IO, fd::FD{T}) where T
+    X = sort(collect(fd.X))
+    Y = sort(collect(setdiff(fd.Y, fd.X)))
+    print(io, "$X → $Y")
+end
+
+function Base.show(io::IO, fds::Vector{FD{T}}) where T
+    println(io, "Functional Dependencies:")
+    for fd ∈ fds
+        println(io, "    $fd")
+    end
+end
+
+"""
     fractional_edge_cover(vars, edges, [verbose])
 
 Compute the fractional edge cover number of vertices in `vars` using hyperedges in `edges`
@@ -179,13 +216,16 @@ function unzip(H::Hypergraph{T}, z::Int)::Set{T} where T
 end
 
 """
-    submodular_width(H; [verbose = false])
+    submodular_width(H; [fds = FD[]], [verbose = false])
 
 Given a hypergraph `H` compute its submodular width. The submodular width is computed
 using equation (106) in [this paper](https://arxiv.org/pdf/1612.02503v4.pdf).
+
+ - `fds` is an optional list of FDs
 """
 function submodular_width(
     H::Hypergraph{T};
+    fds::Vector{FD{T}} = FD{T}[],
     verbose::Bool = false,
 ) where T
     n = length(H.vars)
@@ -252,6 +292,20 @@ function submodular_width(
             E = zip(H, edge)
             @constraint(model, h[E] ≤ 1.0)
             verbose && println("$(f(E)) ≤ 1.0")
+        end
+
+        # For each functional dependency `X → Y` in `fds`, the LP contains a constraint
+        # h[Y] - h[X] = 0.0
+        verbose && println("\nFD Constraints:")
+        for fd ∈ fds
+            @assert any(fd.Y ⊆ E for E in H.edges) """
+            FD variables must be a contained in a hyperedge of the hypergraph. The following
+            FD does not satisfy this condition: $fd
+            """
+            X = zip(H, fd.X)
+            Y = zip(H, fd.Y)
+            @constraint(model, h[Y] - h[X] == 0.0)
+            verbose && println("$(f(Y)) - $(f(X)) = 0.0")
         end
 
         # The actual objective of the LP is to maximize the minimum value among
@@ -451,43 +505,121 @@ function get_all_bag_selectors(tds::Vector{Vector{Set{T}}}) where T
     return selectors
 end
 
-#----------------------------------------------
-# 4-cycle:
-# --------
+# #-------------------------------------------------------------------------------------------
+# # 4-cycle:
+# # --------
 # println(repeat("=", 80))
 # H = Hypergraph(
 #     [1, 2, 3, 4],
 #     [[1, 2], [2, 3], [3, 4], [4, 1]]
 # )
 # @show(H)
-# @show(fractional_hypertree_width(H))
-# @show(submodular_width(H))
+# fhtw = fractional_hypertree_width(H)
+# @show(fhtw)
+# @assert fhtw ≈ 2.0
+# subw = submodular_width(H)
+# @show(subw)
+# @assert subw ≈ 1.5
 
-#----------------------------------------------
-# 5-cycle:
-# --------
+# #-------------------------------------------------------------------------------------------
+# # 4-cycle with FDs:
+# # -----------------
+# println(repeat("=", 80))
+# H = Hypergraph(
+#     [1, 2, 3, 4],
+#     [[1, 2], [2, 3], [3, 4], [4, 1]]
+# )
+# @show(H)
+# fhtw = fractional_hypertree_width(H)
+# @show(fhtw)
+# @assert fhtw ≈ 2.0
+# fds = FD{Int}[
+#     FD([1], [2]),
+#     FD([3], [2]),
+# ]
+# println(fds)
+# subw = submodular_width(H; fds)
+# @show(subw)
+# @assert subw ≈ 1.0
+
+# #-------------------------------------------------------------------------------------------
+# # 5-cycle:
+# # --------
 # println(repeat("=", 80))
 # H = Hypergraph(
 #     [1, 2, 3, 4, 5],
 #     [[1, 2], [2, 3], [3, 4], [4, 5], [5, 1]]
 # )
 # @show(H)
-# @show(fractional_hypertree_width(H))
-# @show(submodular_width(H))
+# fhtw = fractional_hypertree_width(H)
+# @show(fhtw)
+# @assert fhtw ≈ 2.0
+# subw = submodular_width(H)
+# @show(subw)
+# @assert subw ≈ 5/3
 
-#----------------------------------------------
-# 6-cycle:
-# --------
+# #-------------------------------------------------------------------------------------------
+# # 5-cycle with FDs:
+# # -----------------
+# println(repeat("=", 80))
+# H = Hypergraph(
+#     [1, 2, 3, 4, 5],
+#     [[1, 2], [2, 3], [3, 4], [4, 5], [5, 1]]
+# )
+# @show(H)
+# fhtw = fractional_hypertree_width(H)
+# @show(fhtw)
+# @assert fhtw ≈ 2.0
+# fds = FD{Int}[
+#     FD([1], [5]),
+#     FD([5], [1]),
+# ]
+# println(fds)
+# subw = submodular_width(H; fds)
+# @show(subw)
+# @assert subw ≈ 1.5
+
+# #-------------------------------------------------------------------------------------------
+# # 6-cycle:
+# # --------
 # println(repeat("=", 80))
 # H = Hypergraph(
 #     [1, 2, 3, 4, 5, 6],
 #     [[1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 1]]
 # )
 # @show(H)
-# @show(fractional_hypertree_width(H))
-# @show(submodular_width(H))
+# fhtw = fractional_hypertree_width(H)
+# @show(fhtw)
+# @assert fhtw ≈ 2.0
+# subw = submodular_width(H)
+# @show(subw)
+# @assert subw ≈ 5/3
 
-#----------------------------------------------
+# #-------------------------------------------------------------------------------------------
+# # 6-cycle with FDs:
+# # -----------------
+# println(repeat("=", 80))
+# H = Hypergraph(
+#     [1, 2, 3, 4, 5, 6],
+#     [[1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 1]]
+# )
+# @show(H)
+# fhtw = fractional_hypertree_width(H)
+# @show(fhtw)
+# @assert fhtw ≈ 2.0
+# fds = FD{Int}[
+#     FD([2], [3]),
+#     FD([4], [5]),
+#     FD([6], [1]),
+# ]
+# println(fds)
+# subw = submodular_width(H; fds)
+# @show(subw)
+# @assert subw ≈ 1.5
+
+#-------------------------------------------------------------------------------------------
+# Example 6 on page 28 here: https://arxiv.org/pdf/1712.07880
+
 println(repeat("=", 80))
 H = Hypergraph(
     ['x', 'y', 'z', 'u', 'v', 'w'],
@@ -500,7 +632,22 @@ H = Hypergraph(
 )
 @show(H)
 @show(fractional_hypertree_width(H))
-@show(submodular_width(H))
+fds = FD{Char}[
+    FD(['x', 'y'], ['u']),
+    FD(['y', 'u'], ['x']),
+    FD(['u', 'x'], ['y']),
+
+    FD(['z', 'y'], ['v']),
+    FD(['y', 'v'], ['z']),
+    FD(['v', 'z'], ['y']),
+
+    FD(['x', 'z'], ['w']),
+    FD(['z', 'w'], ['x']),
+    FD(['w', 'x'], ['z']),
+]
+println(fds)
+println("Submodular width *WITHOUT* FDs: $(submodular_width(H))\n")
+println("Submodular width *WITH*    FDs: $(submodular_width(H; fds))\n")
 
 
 
