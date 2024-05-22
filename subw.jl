@@ -37,19 +37,26 @@ mutable struct Hypergraph{T}
         edges::Vector{Vector{T}};
         tds::Vector{Vector{Set{T}}} = get_tds(edges)
     ) where T
-        @assert(length(unique(vars)) == length(vars))
+        @assert length(unique(vars)) == length(vars) """
+        Vertices of the hypergraph must be unique
+        """
         var_index = Dict{T, Int}(var => i for (i, var) in enumerate(vars))
+        @assert all(length(unique(edge)) == length(edge) for edge in edges) """
+        Vertices of each hyperedge must be unique
+        """
         edges = map(edge -> Set{T}(edge), edges)
-        @assert all(reduce(union!, edges; init = Set{T}()) == Set{T}(vars))
+        @assert all(reduce(union!, edges; init = Set{T}()) == Set{T}(vars)) """
+        The union of all hyperedges must be equal to the set of vertices of the hypergraph
+        """
         return new{T}(vars, edges, tds, var_index)
     end
 end
 
 function Base.show(io::IO, H::Hypergraph{T}) where T
     println(io, "Hypergraph with vertices: ", H.vars)
-    println(io, "Hyperedges:")
+    println(io, "    and hyperedges:")
     for edge ∈ H.edges
-        println(io, sort(collect(edge)))
+        println(io, "        ", sort(collect(edge)))
     end
 end
 
@@ -195,7 +202,7 @@ function submodular_width(
     # `bag_k ∈ td_k` and take the maximum value across all such combinations.
     selectors = get_all_bag_selectors(H.tds)
     # selectors = Iterators.product(H.tds...,)
-    @show(length(selectors))
+    println("    Final number of bag selectors: $(length(selectors))")
     counter = 0
     for β in selectors
         counter += 1
@@ -291,7 +298,7 @@ function submodular_width(
         verbose && println("\nObjective Value: $obj")
         result = max(result, obj)
         if counter % 100 == 0
-            println(counter, ": ", result)
+            println("        Bag selector $counter/$(length(selectors)): submodular width so far is at least $result")
         end
 
         verbose && println(repeat("=", 80))
@@ -364,12 +371,26 @@ function get_tds(edges::Vector{Vector{T}})::Vector{Vector{Set{T}}} where T
     return tds
 end
 
+"""
+    is_subsumed_by(td1, td2; is_td = true)
+
+Return whether a tree decomposition `td1` is subsumed by `td2`. The optional flag `is_td`
+determines whether we want to treat `td1` and `td2` as tree decompositions or as bag
+selectors.
+"""
 function is_subsumed_by(td1::Vector{Set{T}}, td2::Vector{Set{T}}; is_td = true) where T
     return is_td ?
         all(any(issubset(bag2, bag1) for bag1 ∈ td1) for bag2 ∈ td2) :
         all(any(issubset(bag1, bag2) for bag1 ∈ td1) for bag2 ∈ td2)
 end
 
+"""
+    remove_subsumed_tds(tds; is_tds = true)
+
+Given a list of tree decompositions `tds`, remove subsumed tree decompositions and return
+the resulting list. The optional flag `is_td` determines whether we want to treat `tds` as
+a list of tree decompositions or as a list of bag selectors.
+"""
 function remove_subsumed_tds(tds::Vector{Vector{Set{T}}}; is_td = true) where T
     output_tds = Vector{Vector{Set{T}}}()
     for (i, td1) ∈ enumerate(tds)
@@ -390,6 +411,12 @@ function remove_subsumed_tds(tds::Vector{Vector{Set{T}}}; is_td = true) where T
     return output_tds
 end
 
+"""
+    filter_selector(selector)
+
+Given a bag selector, removed subsumed bags (i.e. that contain other bags) and return the
+resulting bag selector.
+"""
 function filter_selector(selector::Vector{Set{T}}) where T
     new_selector = Vector{Set{T}}()
     for (i, bag1) ∈ enumerate(selector)
@@ -410,6 +437,12 @@ function filter_selector(selector::Vector{Set{T}}) where T
     return new_selector
 end
 
+"""
+    get_bag_selectors(bag_selectors, td)
+
+Given a list of `bag_selectors` and a new tree decomposition `td` that is not included in
+`bag_selectors`, extend `bag_selectors` with the new `td`.
+"""
 function get_bag_selectors(bag_selectors::Vector{Vector{Set{T}}}, td::Vector{Set{T}}) where T
     new_selectors = Vector{Vector{Set{T}}}()
     for selector ∈ bag_selectors
@@ -421,48 +454,65 @@ function get_bag_selectors(bag_selectors::Vector{Vector{Set{T}}}, td::Vector{Set
     return new_selectors
 end
 
+"""
+    get_all_bag_selectors(tds)
+
+Given a list of tree decompositions `tds`, return all possible bag selectors (not including
+subsumed ones).
+"""
 function get_all_bag_selectors(tds::Vector{Vector{Set{T}}}) where T
     selectors = [[bag1] for bag1 ∈ first(tds)]
-    @show length(tds)
+    println("    Number of TDs: $(length(tds))")
+    println("        Creating bag selectors for TD 1/$(length(tds))")
+    println("            Number of bag selectors so far: $(length(selectors))")
     for i = 2:length(tds)
-        @warn "$i"
+        println("        Creating bag selectors for TD $i/$(length(tds))")
         selectors = get_bag_selectors(selectors, tds[i])
-        println(length(selectors))
+        println("            Number of bag selectors so far: $(length(selectors))")
     end
     return selectors
 end
 
-H = Hypergraph(
-    [1, 2, 3, 4],
-    [[1, 2], [2, 3], [3, 4], [4, 1]]
-)
+# println(repeat("=", 80))
+# H = Hypergraph(
+#     [1, 2, 3, 4],
+#     [[1, 2], [2, 3], [3, 4], [4, 1]]
+# )
+# @show(H)
+# @show(fractional_hypertree_width(H))
+# @show(submodular_width(H))
 
-println(fractional_hypertree_width(H))
-println(submodular_width(H))
-
+# println(repeat("=", 80))
 # H = Hypergraph(
 #     [1, 2, 3, 4, 5],
 #     [[1, 2], [2, 3], [3, 4], [4, 5], [5, 1]]
 # )
+# @show(H)
+# @show(fractional_hypertree_width(H))
+# @show(submodular_width(H))
 
-# println(fractional_hypertree_width(H))
-# println(submodular_width(H))
-
+# println(repeat("=", 80))
 # H = Hypergraph(
 #     [1, 2, 3, 4, 5, 6],
 #     [[1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 1]]
 # )
+# @show(H)
+# @show(fractional_hypertree_width(H))
+# @show(submodular_width(H))
 
-# println(fractional_hypertree_width(H))
-# println(submodular_width(H))
-
-# H = Hypergraph(
-#     [1, 2, 3, 4, 5, 6, 7],
-#     [[1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 7], [7, 1]]
-# )
-
-# println(fractional_hypertree_width(H))
-# println(submodular_width(H))
+println(repeat("=", 80))
+H = Hypergraph(
+    ['x', 'y', 'z', 'u', 'v', 'w'],
+    [
+        ['x', 'w', 'z'],
+        ['x', 'u', 'y'],
+        ['y', 'v', 'z'],
+        ['u', 'v', 'w']
+    ]
+)
+@show(H)
+@show(fractional_hypertree_width(H))
+@show(submodular_width(H))
 
 # H2 = Hypergraph(
 #     [1, 2, 3, 4, 5, 6],
