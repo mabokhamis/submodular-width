@@ -23,7 +23,11 @@ Represents a hypergraph `H` whose vertices have type `T`. This struct has the fo
 fields:
     - `vars`: The set of vertices of `H`
     - `edges`: The set of hyperedges of `H`, each of which is a set of vertices
-    - `weights`: The weights of the hyperedges of `H`
+    - `weights`: The weights of the hyperedges of `H`. By default, all weights are `1.0`.
+      When computing bounds with proper degree constraints (like the polymatroid bound or
+      the degree-aware submodular width), the weight of a hyperedge represents the log of
+      the size of the corresponding relation. (The weight can be ∞ if the relation is
+      infinite, e.g. `x + y = z`)
     - `tds`: The collection of tree decompositions of `H`, each of which is a collection of
     bags. Each bag in turn is a set of vertices of `H`
 """
@@ -122,6 +126,57 @@ function Base.show(io::IO, fds::Vector{FD{T}}) where T
     println(io, "Functional Dependencies:")
     for fd ∈ fds
         println(io, "    $fd")
+    end
+end
+
+"""
+    DC{T}
+
+A Degree Constraint DC is represented by a triple `(X, Y, n)` where `X` and `Y` are sets of
+variables are n is a non-negative number. It means:
+```
+log max deg(Y|X) ≤ n
+```
+NOTE that `n` is on log-scale: it is an upper bound on the **log** of the maximum
+degree of `Y` given `X`
+"""
+struct DC{T}
+    X::Set{T}
+    Y::Set{T}
+    n::Float64
+
+    function DC(X::Vector{T}, Y::Vector{T}, n::Float64) where T
+        @assert length(unique(X)) == length(X) """
+        In a DC `($X, $Y, $n)`, the variables in `$X` must be unique
+        """
+        @assert length(unique(Y)) == length(Y) """
+        In a DC `($X, $Y, $n)`, the variables in `$Y` must be unique
+        """
+        @assert isdisjoint(X, Y) """
+        In a DC `($X, $Y, $n)`, the sets `$X and `$Y` must be disjoint
+        """
+        @assert n ≥ 0.0 """
+        In a DC `($X, $Y, $n)`, the number `$n` must be non-negative
+        """
+        return new{T}(Set{T}(X), Set{T}(Y) ∪ Set{T}(X), n)
+    end
+
+    # An FD is a special case of a DC where n = 0
+    function DC(fd::FD{T}) where T
+        return new{T}(fd.X, fd.Y, 0.0)
+    end
+end
+
+function Base.show(io::IO, dc::DC{T}) where T
+    X = sort(collect(dc.X))
+    Y = sort(collect(setdiff(dc.Y, dc.X)))
+    print(io, "log max deg($Y | $X) ≤ $(dc.n)")
+end
+
+function Base.show(io::IO, dcs::Vector{DC{T}}) where T
+    println(io, "Degree Constraints:")
+    for dc ∈ dcs
+        println(io, "    $dc")
     end
 end
 
@@ -249,6 +304,7 @@ using equation (106) in [this paper](https://arxiv.org/pdf/1612.02503v4.pdf).
 function submodular_width(
     H::Hypergraph{T};
     fds::Vector{FD{T}} = FD{T}[],
+    dcs::Vector{DC{T}} = DC{T}[],
     verbose::Bool = false,
 ) where T
     n = length(H.vars)
@@ -317,18 +373,25 @@ function submodular_width(
             verbose && println("$(f(E)) ≤ $(H.weights[i])")
         end
 
-        # For each functional dependency `X → Y` in `fds`, the LP contains a constraint
-        # h[Y] - h[X] = 0.0
-        verbose && println("\nFD Constraints:")
-        for fd ∈ fds
-            @assert any(fd.Y ⊆ E for E in H.edges) """
-            FD variables must be a contained in a hyperedge of the hypergraph. The following
-            FD does not satisfy this condition: $fd
+        # Convert FDs into DCs
+        dcs = copy(dcs)
+        append!(dcs, DC(fd) for fd in fds)
+
+        # For each degree constraint `log max deg(Y|X) ≤ n` in `dcs`, the LP contains a
+        # constraint:
+        # h[Y] - h[X] ≤ n
+        # As a special case, for each FD `X → Y`, the LP contains a constraint:
+        # h[Y] - h[X] ≤ 0
+        verbose && println("\nDC Constraints:")
+        for dc ∈ dcs
+            @assert any(dc.Y ⊆ E for E in H.edges) """
+            DC variables must be a contained in a hyperedge of the hypergraph. The following
+            DC does not satisfy this condition: $dc
             """
-            X = zip(H, fd.X)
-            Y = zip(H, fd.Y)
-            @constraint(model, h[Y] - h[X] == 0.0)
-            verbose && println("$(f(Y)) - $(f(X)) = 0.0")
+            X = zip(H, dc.X)
+            Y = zip(H, dc.Y)
+            @constraint(model, h[Y] - h[X] ≤ dc.n)
+            verbose && println("$(f(Y)) - $(f(X)) ≤ $(dc.n)")
         end
 
         # The actual objective of the LP is to maximize the minimum value among
