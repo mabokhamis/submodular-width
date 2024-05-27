@@ -29,7 +29,7 @@ fields:
       the size of the corresponding relation. (The weight can be ∞ if the relation is
       infinite, e.g. `x + y = z`)
     - `tds`: The collection of tree decompositions of `H`, each of which is a collection of
-    bags. Each bag in turn is a set of vertices of `H`
+      bags. Each bag in turn is a set of vertices of `H`
 """
 mutable struct Hypergraph{T}
     vars::Vector{T}
