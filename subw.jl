@@ -1,18 +1,20 @@
-# import Pkg
-# Pkg.add("JuMP")
-# Pkg.add("Clp")
-# Pkg.add("MathOptInterface")
-# Pkg.add("Combinatorics")
-# Pkg.add("DataStructures")
-# Pkg.add("LightGraphs")
+"""
+    HypergraphWidths
 
+This module contains tools for computing the fractional hypertree width and submodular width
+of a query. In addition, it supports the FD-aware and degree-aware variants of those width
+measures.
+"""
 module HypergraphWidths
 
-using JuMP, Clp, MathOptInterface
+using JuMP
+using Clp
+using MathOptInterface
 using Combinatorics
 using DataStructures
-using LightGraphs
-using Random
+
+export Hypergraph, FD, fractional_edge_cover, fractional_hypertree_width, submodular_width,
+    get_tds
 
 """
     Hypergraph{T}
@@ -21,26 +23,39 @@ Represents a hypergraph `H` whose vertices have type `T`. This struct has the fo
 fields:
     - `vars`: The set of vertices of `H`
     - `edges`: The set of hyperedges of `H`, each of which is a set of vertices
+    - `weights`: The weights of the hyperedges of `H`
     - `tds`: The collection of tree decompositions of `H`, each of which is a collection of
     bags. Each bag in turn is a set of vertices of `H`
 """
 mutable struct Hypergraph{T}
     vars::Vector{T}
     edges::Vector{Set{T}}
+    weights::Vector{Float64}
     tds::Vector{Vector{Set{T}}}
 
-    # `var_index` maps a vertex `vars[i]` in `vars` to its index `i`
-    var_index::Dict{T, Int}
+    # `_var_index` maps a vertex `vars[i]` in `vars` to its index `i`
+    _var_index::Dict{T, Int}
 
+    # `_var_edges` maps a vertex `v` in `vars` to (the indices of) hyperedges in `edges`
+    # containing `v`
+    _var_edges::Dict{T, Set{Int}}
+
+    """
+        Hypergraph(vars, edges; weights = ones(length(edges)), tds = get_tds(edges))
+
+    Construct a hypergraph `H` with vertices `vars` and hyperedges `edges`. Optional
+    `weights` and `tds` can be provided. By default, the weights of the hyperedges are all
+    `1.0` and the tree decompositions `tds` are computed using `get_tds(edges)`.
+    """
     function Hypergraph(
         vars::Vector{T},
         edges::Vector{Vector{T}};
+        weights::Vector{Float64} = ones(length(edges)),
         tds::Vector{Vector{Set{T}}} = get_tds(edges)
     ) where T
         @assert length(unique(vars)) == length(vars) """
         Vertices of the hypergraph must be unique
         """
-        var_index = Dict{T, Int}(var => i for (i, var) in enumerate(vars))
         @assert all(length(unique(edge)) == length(edge) for edge in edges) """
         Vertices of each hyperedge must be unique
         """
@@ -48,7 +63,20 @@ mutable struct Hypergraph{T}
         @assert all(reduce(union!, edges; init = Set{T}()) == Set{T}(vars)) """
         The union of all hyperedges must be equal to the set of vertices of the hypergraph
         """
-        return new{T}(vars, edges, tds, var_index)
+        @assert length(weights) == length(edges) """
+        The number of weights must be equal to the number of hyperedges
+        """
+        @assert all(w ≥ 0.0 for w in weights) """
+        Weights must be non-negative
+        """
+
+        _var_index = Dict{T, Int}(var => i for (i, var) in enumerate(vars))
+
+        _var_edges = Dict{T, Set{Int}}(v => Set{Int}() for v in vars)
+        for (i, e) in enumerate(edges), v in e
+            push!(_var_edges[v], i)
+        end
+        return new{T}(vars, edges, weights, tds, _var_index, _var_edges)
     end
 end
 
@@ -98,50 +126,45 @@ function Base.show(io::IO, fds::Vector{FD{T}}) where T
 end
 
 """
-    fractional_edge_cover(vars, edges, [verbose])
+    fractional_edge_cover(H, target_vars = H.vars; [verbose])
 
-Compute the fractional edge cover number of vertices in `vars` using hyperedges in `edges`
+Compute the fractional edge cover number of a given set of vertices `target_vars` in a
+target hypergraph `H`
 """
 function fractional_edge_cover(
-    vars::Vector{T},
-    edges::Vector{Set{T}};
+    H::Hypergraph{T},
+    target_vars::Vector{T} = H.vars;
     verbose::Bool = false,
 ) where T
-
-    # `var_edges` maps a vertex `v` in `vars` to (the indices of) hyperedges in `edges`
-    # containing `v`
-    var_edges = Dict{T, Vector{Int}}(v => Int[] for v in vars)
-    for (i, e) in enumerate(edges), v in e
-        if in(v, vars)
-            push!(var_edges[v], i)
-        end
-    end
+    @assert target_vars ⊆ H.vars """
+    `fractional_edge_cover(H, target_vars)` expects `target_vars` to be a subset of the
+    vertices of the given hypergraph `H`
+    """
 
     # initialize a linear program
     model = Model(Clp.Optimizer)
     set_optimizer_attribute(model, "LogLevel", 0)
 
-    n = length(vars)
-    m = length(edges)
+    n = length(target_vars) # number of constraints
+    m = length(H.edges)     # number of variables
 
     # create a variable `λ_j` for each hyperedge `e_j` where `λ_j` represents the
     # coefficient assigned to `e_j` in a fractional edge cover of `vars`
     @variable(model, λ[1:m] >= 0.0)
 
-    # set the objective function to be `Σ_j λ_j`
-    obj = @expression(model, sum(λ[j] for j in 1:m))
+    # set the objective function to be `Σ_j weight_j * λ_j`
+    obj = @expression(model, sum(H.weights[j] * λ[j] for j in 1:m))
     @objective(model, Min, obj)
 
     # for each vertex `v_i ∈ vars`, add a constraint saying that `v_i` is fractionally
     # covered by a total of at least `1.0`
-    @constraint(model, con[i in 1:n], sum(λ[j] for j in var_edges[vars[i]]) >= 1.0)
+    @constraint(model, con[i in 1:n], sum(λ[j] for j in H._var_edges[target_vars[i]]) >= 1.0)
 
     optimize!(model)
 
     @assert termination_status(model) == MathOptInterface.OPTIMAL
 
     if verbose
-        println(sort(vars))
         sol = value.(λ)
         println(sol)
         println(repeat("-", 40))
@@ -165,7 +188,7 @@ function fractional_hypertree_width(
     # for each tree decomposition `td` of `H`
     for (i, td) in enumerate(H.tds)
         # let `w` be the maximum fractional edge cover number among bags of `td`
-        w = maximum(fractional_edge_cover(collect(bag), H.edges) for bag in td; init = 0.0)
+        w = maximum(fractional_edge_cover(H, collect(bag)) for bag in td; init = 0.0)
         # find a `td` minimizing `w`; break ties by taking the `td` with the smallest
         # number of bags
         if w < fhtw - 1e-6 || abs(w-fhtw) <= 1e-6 && length(td) < length(H.tds[best_td])
@@ -176,7 +199,7 @@ function fractional_hypertree_width(
     if verbose
         td = H.tds[best_td]
         maximum(
-            fractional_edge_cover(collect(bag), H.edges; verbose = true)
+            fractional_edge_cover(H, collect(bag); verbose = true)
         for bag in td; init = 0.0)
     end
     return fhtw
@@ -191,7 +214,7 @@ bits. For example, `{v1, v3, v4, v8}` is encoded as the binary string `10001101`
 function zip(H::Hypergraph{T}, U::Set{T})::Int where T
     z = 0
     for x in U
-        z |= (1 << (H.var_index[x] - 1))
+        z |= (1 << (H._var_index[x] - 1))
     end
     return z
 end
@@ -236,7 +259,7 @@ function submodular_width(
     # To compute the submodular width of `H`, we have to solve a linear program for each
     # combination of bags `(bag1, bag2, ⋯, bag_k)` where `bag1 ∈ td1, bag2 ∈ td2, …,`
     # `bag_k ∈ td_k` and take the maximum value across all such combinations.
-    selectors = get_all_bag_selectors(H.tds)
+    selectors = _get_bag_selectors(H.tds)
     # selectors = Iterators.product(H.tds...,)
     println("    Final number of bag selectors: $(length(selectors))")
     counter = 0
@@ -288,10 +311,10 @@ function submodular_width(
         # For each hyperedge `e` in `H`, the LP contains a constraint `h[e] ≤ 1.0`. These
         # are called "edge-domination" constraints.
         verbose && println("\nEdge-domination Constraints:")
-        for edge in H.edges
+        for (i, edge) in enumerate(H.edges)
             E = zip(H, edge)
-            @constraint(model, h[E] ≤ 1.0)
-            verbose && println("$(f(E)) ≤ 1.0")
+            @constraint(model, h[E] ≤ H.weights[i])
+            verbose && println("$(f(E)) ≤ $(H.weights[i])")
         end
 
         # For each functional dependency `X → Y` in `fds`, the LP contains a constraint
@@ -400,38 +423,38 @@ function get_tds(edges::Vector{Vector{T}})::Vector{Vector{Set{T}}} where T
     end
     # convert `tds` from `Set{Set{Set{T}}}` to `Vector{Vector{Set{T}}}`
     tds = map(td -> collect(td), collect(tds))
-    tds = remove_subsumed_tds(tds)
+    tds = _remove_subsumed_tds(tds)
     return tds
 end
 
 """
-    is_subsumed_by(td1, td2; is_td = true)
+    _is_subsumed_by(td1, td2; is_td = true)
 
 Return whether a tree decomposition `td1` is subsumed by `td2`. The optional flag `is_td`
 determines whether we want to treat `td1` and `td2` as tree decompositions or as bag
 selectors.
 """
-function is_subsumed_by(td1::Vector{Set{T}}, td2::Vector{Set{T}}; is_td = true) where T
+function _is_subsumed_by(td1::Vector{Set{T}}, td2::Vector{Set{T}}; is_td = true) where T
     return is_td ?
         all(any(issubset(bag2, bag1) for bag1 ∈ td1) for bag2 ∈ td2) :
         all(any(issubset(bag1, bag2) for bag1 ∈ td1) for bag2 ∈ td2)
 end
 
 """
-    remove_subsumed_tds(tds; is_tds = true)
+    _remove_subsumed_tds(tds; is_tds = true)
 
 Given a list of tree decompositions `tds`, remove subsumed tree decompositions and return
 the resulting list. The optional flag `is_td` determines whether we want to treat `tds` as
 a list of tree decompositions or as a list of bag selectors.
 """
-function remove_subsumed_tds(tds::Vector{Vector{Set{T}}}; is_td = true) where T
+function _remove_subsumed_tds(tds::Vector{Vector{Set{T}}}; is_td = true) where T
     output_tds = Vector{Vector{Set{T}}}()
     for (i, td1) ∈ enumerate(tds)
         is_subsumed = false
         for (j, td2) ∈ enumerate(tds)
             if j != i
-                if is_subsumed_by(td1, td2; is_td) && (
-                        !is_subsumed_by(td2, td1; is_td) || is_subsumed_by(td2, td1; is_td) && i > j)
+                if _is_subsumed_by(td1, td2; is_td) && (
+                        !_is_subsumed_by(td2, td1; is_td) || _is_subsumed_by(td2, td1; is_td) && i > j)
                     is_subsumed = true
                     break
                 end
@@ -445,12 +468,12 @@ function remove_subsumed_tds(tds::Vector{Vector{Set{T}}}; is_td = true) where T
 end
 
 """
-    filter_selector(selector)
+    _filter_selector(selector)
 
 Given a bag selector, removed subsumed bags (i.e. that contain other bags) and return the
 resulting bag selector.
 """
-function filter_selector(selector::Vector{Set{T}}) where T
+function _filter_selector(selector::Vector{Set{T}}) where T
     new_selector = Vector{Set{T}}()
     for (i, bag1) ∈ enumerate(selector)
         is_subsumed = false
@@ -471,360 +494,204 @@ function filter_selector(selector::Vector{Set{T}}) where T
 end
 
 """
-    get_bag_selectors(bag_selectors, td)
+    _extend_bag_selectors(bag_selectors, td)
 
 Given a list of `bag_selectors` and a new tree decomposition `td` that is not included in
 `bag_selectors`, extend `bag_selectors` with the new `td`.
 """
-function get_bag_selectors(bag_selectors::Vector{Vector{Set{T}}}, td::Vector{Set{T}}) where T
+function _extend_bag_selectors(bag_selectors::Vector{Vector{Set{T}}}, td::Vector{Set{T}}) where T
     new_selectors = Vector{Vector{Set{T}}}()
     for selector ∈ bag_selectors
         for b ∈ td
-            push!(new_selectors, filter_selector([selector; b]))
+            push!(new_selectors, _filter_selector([selector; b]))
         end
     end
-    new_selectors = remove_subsumed_tds(new_selectors; is_td = false)
+    new_selectors = _remove_subsumed_tds(new_selectors; is_td = false)
     return new_selectors
 end
 
 """
-    get_all_bag_selectors(tds)
+    _get_bag_selectors(tds)
 
 Given a list of tree decompositions `tds`, return all possible bag selectors (not including
 subsumed ones).
 """
-function get_all_bag_selectors(tds::Vector{Vector{Set{T}}}) where T
+function _get_bag_selectors(tds::Vector{Vector{Set{T}}}) where T
     selectors = [[bag1] for bag1 ∈ first(tds)]
     println("    Number of TDs: $(length(tds))")
     println("        Creating bag selectors for TD 1/$(length(tds))")
     println("            Number of bag selectors so far: $(length(selectors))")
     for i = 2:length(tds)
         println("        Creating bag selectors for TD $i/$(length(tds))")
-        selectors = get_bag_selectors(selectors, tds[i])
+        selectors = _extend_bag_selectors(selectors, tds[i])
         println("            Number of bag selectors so far: $(length(selectors))")
     end
     return selectors
 end
 
-# #-------------------------------------------------------------------------------------------
-# # 4-cycle:
-# # --------
-# println(repeat("=", 80))
-# H = Hypergraph(
-#     [1, 2, 3, 4],
-#     [[1, 2], [2, 3], [3, 4], [4, 1]]
-# )
-# @show(H)
-# fhtw = fractional_hypertree_width(H)
-# @show(fhtw)
-# @assert fhtw ≈ 2.0
-# subw = submodular_width(H)
-# @show(subw)
-# @assert subw ≈ 1.5
+#==========================================================================================#
+# Testcases:
+# ----------
 
-# #-------------------------------------------------------------------------------------------
-# # 4-cycle with FDs:
-# # -----------------
-# println(repeat("=", 80))
-# H = Hypergraph(
-#     [1, 2, 3, 4],
-#     [[1, 2], [2, 3], [3, 4], [4, 1]]
-# )
-# @show(H)
-# fhtw = fractional_hypertree_width(H)
-# @show(fhtw)
-# @assert fhtw ≈ 2.0
-# fds = FD{Int}[
-#     FD([1], [2]),
-#     FD([3], [2]),
-# ]
-# println(fds)
-# subw = submodular_width(H; fds)
-# @show(subw)
-# @assert subw ≈ 1.0
+# 4-cycle query
+function test_4cycle()
+    println(repeat("=", 80))
+    H = Hypergraph(
+        [1, 2, 3, 4],
+        [[1, 2], [2, 3], [3, 4], [4, 1]]
+    )
+    @show(H)
+    fhtw = fractional_hypertree_width(H)
+    @show(fhtw)
+    @assert fhtw ≈ 2.0
+    subw = submodular_width(H)
+    @show(subw)
+    @assert subw ≈ 1.5
+end
 
-# #-------------------------------------------------------------------------------------------
-# # 5-cycle:
-# # --------
-# println(repeat("=", 80))
-# H = Hypergraph(
-#     [1, 2, 3, 4, 5],
-#     [[1, 2], [2, 3], [3, 4], [4, 5], [5, 1]]
-# )
-# @show(H)
-# fhtw = fractional_hypertree_width(H)
-# @show(fhtw)
-# @assert fhtw ≈ 2.0
-# subw = submodular_width(H)
-# @show(subw)
-# @assert subw ≈ 5/3
-
-# #-------------------------------------------------------------------------------------------
-# # 5-cycle with FDs:
-# # -----------------
-# println(repeat("=", 80))
-# H = Hypergraph(
-#     [1, 2, 3, 4, 5],
-#     [[1, 2], [2, 3], [3, 4], [4, 5], [5, 1]]
-# )
-# @show(H)
-# fhtw = fractional_hypertree_width(H)
-# @show(fhtw)
-# @assert fhtw ≈ 2.0
-# fds = FD{Int}[
-#     FD([1], [5]),
-#     FD([5], [1]),
-# ]
-# println(fds)
-# subw = submodular_width(H; fds)
-# @show(subw)
-# @assert subw ≈ 1.5
-
-# #-------------------------------------------------------------------------------------------
-# # 6-cycle:
-# # --------
-# println(repeat("=", 80))
-# H = Hypergraph(
-#     [1, 2, 3, 4, 5, 6],
-#     [[1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 1]]
-# )
-# @show(H)
-# fhtw = fractional_hypertree_width(H)
-# @show(fhtw)
-# @assert fhtw ≈ 2.0
-# subw = submodular_width(H)
-# @show(subw)
-# @assert subw ≈ 5/3
-
-# #-------------------------------------------------------------------------------------------
-# # 6-cycle with FDs:
-# # -----------------
-# println(repeat("=", 80))
-# H = Hypergraph(
-#     [1, 2, 3, 4, 5, 6],
-#     [[1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 1]]
-# )
-# @show(H)
-# fhtw = fractional_hypertree_width(H)
-# @show(fhtw)
-# @assert fhtw ≈ 2.0
-# fds = FD{Int}[
-#     FD([2], [3]),
-#     FD([4], [5]),
-#     FD([6], [1]),
-# ]
-# println(fds)
-# subw = submodular_width(H; fds)
-# @show(subw)
-# @assert subw ≈ 1.5
-
-#-------------------------------------------------------------------------------------------
-# Example 6 on page 28 here: https://arxiv.org/pdf/1712.07880
-
-println(repeat("=", 80))
-H = Hypergraph(
-    ['x', 'y', 'z', 'u', 'v', 'w'],
-    [
-        ['x', 'w', 'z'],
-        ['x', 'u', 'y'],
-        ['y', 'v', 'z'],
-        ['u', 'v', 'w']
+# 4-cycle with FDs
+function test_4cycle_with_fds()
+    println(repeat("=", 80))
+    H = Hypergraph(
+        [1, 2, 3, 4],
+        [[1, 2], [2, 3], [3, 4], [4, 1]]
+    )
+    @show(H)
+    fhtw = fractional_hypertree_width(H)
+    @show(fhtw)
+    @assert fhtw ≈ 2.0
+    fds = FD{Int}[
+        FD([1], [2]),
+        FD([3], [2]),
     ]
-)
-@show(H)
-@show(fractional_hypertree_width(H))
-fds = FD{Char}[
-    FD(['x', 'y'], ['u']),
-    FD(['y', 'u'], ['x']),
-    FD(['u', 'x'], ['y']),
-
-    FD(['z', 'y'], ['v']),
-    FD(['y', 'v'], ['z']),
-    FD(['v', 'z'], ['y']),
-
-    FD(['x', 'z'], ['w']),
-    FD(['z', 'w'], ['x']),
-    FD(['w', 'x'], ['z']),
-]
-println(fds)
-println("Submodular width *WITHOUT* FDs: $(submodular_width(H))\n")      # 1.75
-println("Submodular width *WITH*    FDs: $(submodular_width(H; fds))\n") # 1.5
-
-
-
-#=========================================================================================#
-# The following section is about computing the fractional hypertree width of a _multivariate
-# extension_ of a query. Multivariate extensions are defined in [this
-# paper](https://arxiv.org/abs/2312.09331)
-
-function get_multivariate_extension(H::Hypergraph{T}, extras::Vector{T}) where T
-    @assert isempty(extras ∩ H.vars) && length(extras) == length(H.edges)
-    m = length(H.edges)
-    E = Hypergraph{T}[]
-    for p in permutations(1:m)
-        # @show(p)
-        edges = deepcopy(H.edges)
-        for (i, k) in enumerate(p)
-            union!(edges[k], extras[2:min(i, m-1)])
-        end
-        edges = map(edge -> collect(edge), edges)
-        push!(E, Hypergraph(H.vars ∪ extras[2:end-1], edges))
-    end
-    return E
+    println(fds)
+    subw = submodular_width(H; fds)
+    @show(subw)
+    @assert subw ≈ 1.0
 end
 
-function fractional_hypertree_width(E::Vector{Hypergraph{T}}) where T
-    m = 0.0
-    witness_reported = false
-    for (i, H) in enumerate(E)
-        w = fractional_hypertree_width(H)
-        if abs(w - 2.0) < 1e-6 && !witness_reported
-            @warn "$H"
-            witness_reported = true
-        end
-        m = max(m, w)
-        # println("$i: $m")
-    end
-    return m
+# 5-cycle:
+function test_5cycle()
+    println(repeat("=", 80))
+    H = Hypergraph(
+        [1, 2, 3, 4, 5],
+        [[1, 2], [2, 3], [3, 4], [4, 5], [5, 1]]
+    )
+    @show(H)
+    fhtw = fractional_hypertree_width(H)
+    @show(fhtw)
+    @assert fhtw ≈ 2.0
+    subw = submodular_width(H)
+    @show(subw)
+    @assert subw ≈ 5/3
 end
 
-# ------------------------------------------------------------------------------------
+# 5-cycle with FDs
+function test_5cycle_with_fds()
+    println(repeat("=", 80))
+    H = Hypergraph(
+        [1, 2, 3, 4, 5],
+        [[1, 2], [2, 3], [3, 4], [4, 5], [5, 1]]
+    )
+    @show(H)
+    fhtw = fractional_hypertree_width(H)
+    @show(fhtw)
+    @assert fhtw ≈ 2.0
+    fds = FD{Int}[
+        FD([1], [5]),
+        FD([5], [1]),
+    ]
+    println(fds)
+    subw = submodular_width(H; fds)
+    @show(subw)
+    @assert subw ≈ 1.5
+end
 
-# H = Hypergraph(
-#     [1, 2, 3, 4],
-#     [[1, 2, 3], [2, 3, 4], [3, 4, 1], [4, 1, 2]],
-# )
+# 6-cycle
+function test_6cycle()
+    println(repeat("=", 80))
+    H = Hypergraph(
+        [1, 2, 3, 4, 5, 6],
+        [[1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 1]]
+    )
+    @show(H)
+    fhtw = fractional_hypertree_width(H)
+    @show(fhtw)
+    @assert fhtw ≈ 2.0
+    subw = submodular_width(H)
+    @show(subw)
+    @assert subw ≈ 5/3
+end
 
-# E = get_multivariate_extension(H, [-1, -2, -3, -4])
-# println(fractional_hypertree_width(H))
-# println(fractional_hypertree_width(E))
+# 6-cycle with FDs:
+function test_6cycle_with_fds()
+    println(repeat("=", 80))
+    H = Hypergraph(
+        [1, 2, 3, 4, 5, 6],
+        [[1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 1]]
+    )
+    @show(H)
+    fhtw = fractional_hypertree_width(H)
+    @show(fhtw)
+    @assert fhtw ≈ 2.0
+    fds = FD{Int}[
+        FD([2], [3]),
+        FD([4], [5]),
+        FD([6], [1]),
+    ]
+    println(fds)
+    subw = submodular_width(H; fds)
+    @show(subw)
+    @assert subw ≈ 1.5
+    end
 
+# Example 6 on page 28 here: https://arxiv.org/pdf/1712.07880
+function test_example_6()
+    println(repeat("=", 80))
+    H = Hypergraph(
+        ['x', 'y', 'z', 'u', 'v', 'w'],
+        [
+            ['x', 'w', 'z'],
+            ['x', 'u', 'y'],
+            ['y', 'v', 'z'],
+            ['u', 'v', 'w']
+        ]
+    )
+    @show(H)
+    fhtw = fractional_hypertree_width(H)
+    @show(fhtw)
+    @assert fhtw ≈ 2.0
+    fds = FD{Char}[
+        FD(['x', 'y'], ['u']),
+        FD(['y', 'u'], ['x']),
+        FD(['u', 'x'], ['y']),
 
-# # 3-path
-# H = Hypergraph(
-#     [:A, :B, :C, :D],
-#     [[:A], [:A, :B], [:B, :C], [:C, :D], [:D]],
-# )
+        FD(['z', 'y'], ['v']),
+        FD(['y', 'v'], ['z']),
+        FD(['v', 'z'], ['y']),
 
-# E = get_multivariate_extension(H, [:Z1, :Z2, :Z3, :Z4, :Z5])
-# @warn "$(length(E))"
-# println("RESULT:", fractional_hypertree_width(E))
+        FD(['x', 'z'], ['w']),
+        FD(['z', 'w'], ['x']),
+        FD(['w', 'x'], ['z']),
+    ]
+    println(fds)
+    subw_no_fds = submodular_width(H)
+    println("Submodular width *WITHOUT* FDs: $subw_no_fds\n")      # 1.75
+    @assert subw_no_fds ≈ 1.75
+    subw_fds = submodular_width(H; fds)
+    println("Submodular width *WITH*    FDs: $subw_fds\n")         # 1.5
+    @assert subw_fds ≈ 1.5
+end
 
-# 2-path
-# H = Hypergraph(
-#     [:A, :B, :C],
-#     [[:A], [:A, :B], [:B, :C], [:C]],
-# )
-
-# E = get_multivariate_extension(H, [:Z1, :Z2, :Z3, :Z4])
-# @warn "$(length(E))"
-# println("RESULT:", fractional_hypertree_width(E))
-
-# # 1-path
-# H = Hypergraph(
-#     [:A, :B],
-#     [[:A], [:A, :B], [:B]],
-# )
-
-# E = get_multivariate_extension(H, [:Z1, :Z2, :Z3])
-# @warn "$(length(E))"
-# println("RESULT:", fractional_hypertree_width(E))
-
-
-
-# ------------------------------------------------------------------------------------
-# Ahmet's queries:
-# ================
-
-# # Q_1
-# H = Hypergraph(
-#     [:A, :B, :C, :D, :E, :F],
-#     [[:A, :B], [:B, :C], [:C, :D], [:B, :E], [:C, :F]],
-# )
-
-# E = get_multivariate_extension(H, [:Z1, :Z2, :Z3, :Z4, :Z5])
-# @warn "$(length(E))"
-# println("RESULT:", fractional_hypertree_width(E))
-# # Result: 1.5
-
-# # ----------------------------------------------------------------------------
-
-# # Q_1'
-# H = Hypergraph(
-#     [:A, :B, :C, :D, :E, :E2, :F],
-#     [[:A, :B], [:B, :C], [:C, :D], [:B, :E], [:B, :E2], [:C, :F]],
-# )
-
-# E = get_multivariate_extension(H, [:Z1, :Z2, :Z3, :Z4, :Z5, :Z6])
-# @warn "$(length(E))"
-# println("RESULT:", fractional_hypertree_width(E))
-# # Result: 1.5
-
-# # ----------------------------------------------------------------------------
-
-# # Q_2
-# H = Hypergraph(
-#     [:A, :B, :C],
-#     [[:A, :B, :C], [:A, :B], [:B, :C]],
-# )
-
-# E = get_multivariate_extension(H, [:Z1, :Z2, :Z3])
-# @warn "$(length(E))"
-# println("RESULT:", fractional_hypertree_width(E))
-# # Result: 1.5
-
-# # ----------------------------------------------------------------------------
-
-# # Q_2'
-# H = Hypergraph(
-#     [:A, :B, :C, :D],
-#     [[:A, :B, :C, :D], [:A, :B], [:B, :C], [:C, :D]],
-# )
-
-# E = get_multivariate_extension(H, [:Z1, :Z2, :Z3, :Z4])
-# @warn "$(length(E))"
-# println("RESULT:", fractional_hypertree_width(E))
-# # Result: 1.5
-
-# # ----------------------------------------------------------------------------
-
-# # Q_2''
-# H = Hypergraph(
-#     [:A, :B, :C, :D],
-#     [[:A, :B, :C, :D], [:A, :B], [:B, :C], [:B, :D]],
-# )
-
-# E = get_multivariate_extension(H, [:Z1, :Z2, :Z3, :Z4])
-# @warn "$(length(E))"
-# println("RESULT:", fractional_hypertree_width(E))
-# # Result: 5/3
-
-# # ----------------------------------------------------------------------------
-
-# # Q_3
-# H = Hypergraph(
-#     [:A, :B, :C],
-#     [[:A, :B, :C], [:A], [:B], [:C]],
-# )
-
-# E = get_multivariate_extension(H, [:Z1, :Z2, :Z3, :Z4])
-# @warn "$(length(E))"
-# println("RESULT:", fractional_hypertree_width(E))
-# # Result: 5/3
-
-# # ----------------------------------------------------------------------------
-
-# # Q_3'
-# H = Hypergraph(
-#     [:A, :B, :C, :D],
-#     [[:A, :B, :C, :D], [:A], [:B], [:C], [:D]],
-# )
-
-# E = get_multivariate_extension(H, [:Z1, :Z2, :Z3, :Z4, :Z5])
-# @warn "$(length(E))"
-# println("RESULT:", fractional_hypertree_width(E))
-# # Result: 1:75
-
-#=========================================================================================#
+# Run all tests
+function test_all()
+    test_4cycle()
+    test_4cycle_with_fds()
+    test_5cycle()
+    test_5cycle_with_fds()
+    test_6cycle()
+    test_6cycle_with_fds()
+    test_example_6()
+end
 
 end
