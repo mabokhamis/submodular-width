@@ -119,7 +119,7 @@ struct FD{T}
     X::Set{T}
     Y::Set{T}
 
-    function FD(X::Vector{T}, Y::Vector{T}) where T
+    function FD(X::Union{Vector{T},Set{T}}, Y::Union{Vector{T},Set{T}}) where T
         @assert length(unique(X)) == length(X) """
         In an FD `$X → $Y`, the variables in `$X` must be unique
         """
@@ -162,7 +162,7 @@ struct DC{T}
     Y::Set{T}
     n::Float64
 
-    function DC(X::Vector{T}, Y::Vector{T}, n::Float64) where T
+    function DC(X::Union{Vector{T},Set{T}}, Y::Union{Vector{T},Set{T}}, n::Number) where T
         @assert length(unique(X)) == length(X) """
         In a DC `($X, $Y, $n)`, the variables in `$X` must be unique
         """
@@ -175,7 +175,7 @@ struct DC{T}
         @assert n ≥ 0.0 """
         In a DC `($X, $Y, $n)`, the number `$n` must be non-negative
         """
-        return new{T}(Set{T}(X), Set{T}(Y) ∪ Set{T}(X), n)
+        return new{T}(Set{T}(X), Set{T}(Y) ∪ Set{T}(X), Float64(n))
     end
 
     # An FD is a special case of a DC where n = 0
@@ -870,7 +870,7 @@ function test_polymatroid_bound1_variant()
     )
     @show(H)
     pb = polymatroid_bound(H)
-    @assert pb ≈ 22.0
+    @assert pb ≈ 22.0 # 10 + 12
     fds = FD{Char}[
         FD(['x', 'z'], ['u']),
     ]
@@ -878,7 +878,39 @@ function test_polymatroid_bound1_variant()
         DC(['y', 'u'], ['x'], 2.0),
     ]
     pb = polymatroid_bound(H; fds = fds, dcs = dcs)
-    @assert pb ≈ 35/2
+    @assert pb ≈ 35/2 # (10 + 11 + 12 + 2 + 0) / 2
+end
+
+# Q :- R(A, B), S(B, C), T(C, D), U(D, A)
+# `U(D, A)` is an infinite relation but has two DCs from `A' to `D` and from `D` to `A`
+function test_polymatroid_bound2()
+    println(repeat("=", 80))
+    H = Hypergraph(
+        ['A', 'B', 'C', 'D'],
+        [
+            ['A', 'B'],      # R(A, B)
+            ['B', 'C'],      # S(B, C)
+            ['C', 'D'],      # T(C, D)
+            ['D', 'A'],      # U(D, A)
+        ];
+        weights = [
+            10.0,
+            11.0,
+            12.0,
+            Inf,
+        ]
+    )
+    @show(H)
+    pb = polymatroid_bound(H)
+    @assert pb ≈ 22.0 # 10 + 12
+    fds = FD{Char}[
+        FD(['D'], ['A']),
+    ]
+    dcs = DC{Char}[
+        DC(['A'], ['D'], 3.0),
+    ]
+    pb = polymatroid_bound(H; fds = fds, dcs = dcs)
+    @assert pb ≈ 36/2  # (10 + 11 + 12 + 3 + 0) / 2
 end
 
 # Run all tests
@@ -892,6 +924,7 @@ function test_all()
     test_example_6()
     test_polymatroid_bound1()
     test_polymatroid_bound1_variant()
+    test_polymatroid_bound2()
 end
 
 end
