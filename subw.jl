@@ -14,7 +14,7 @@ using Combinatorics
 using DataStructures
 
 export Hypergraph, FD, fractional_edge_cover, fractional_hypertree_width, submodular_width,
-    get_tds
+    get_tds, get_trivial_tds
 
 """
     Hypergraph{T}
@@ -49,13 +49,20 @@ mutable struct Hypergraph{T}
 
     Construct a hypergraph `H` with vertices `vars` and hyperedges `edges`. Optional
     `weights` and `tds` can be provided. By default, the weights of the hyperedges are all
-    `1.0` and the tree decompositions `tds` are computed using `get_tds(edges)`.
+    `1.0`, and the tree decompositions `tds` are computed using `get_tds(edges)`.
+
+    NOTE: The computation of tree decompositions (using `get_tds(edges)`) can be expensive.
+    If you don't need TDs (e.g. you are only interested in the polymatroid bound), you could
+    provide `tds = get_trivial_tds(edges)` instead, to use a single TD with a single bag
+    containing all vars.
     """
     function Hypergraph(
         vars::Vector{T},
-        edges::Vector{Vector{T}};
+        edges::Union{Vector{Vector{T}},Vector{Set{T}}};
         weights::Vector{Float64} = ones(length(edges)),
         tds::Vector{Vector{Set{T}}} = get_tds(edges)
+        # Alternatively, use `tds = get_trivial_tds(edges)` to skip the above expensive
+        # computation of TDs, if TDs are not needed (e.g. for the polymatroid bound)
     ) where T
         @assert length(unique(vars)) == length(vars) """
         Vertices of the hypergraph must be unique
@@ -84,11 +91,21 @@ mutable struct Hypergraph{T}
     end
 end
 
+# Copy a hypergraph
+function Base.copy(H::Hypergraph{T}) where T
+    return Hypergraph(
+        copy(H.vars),
+        [copy(E) for E in H.edges];
+        weights = copy(H.weights),
+        tds = [[copy(bag) for bag in td] for td in H.tds]
+    )
+end
+
 function Base.show(io::IO, H::Hypergraph{T}) where T
     println(io, "Hypergraph with vertices: ", H.vars)
     println(io, "    and hyperedges:")
-    for edge ∈ H.edges
-        println(io, "        ", sort(collect(edge)))
+    for (i, edge) ∈ enumerate(H.edges)
+        println(io, "        ", sort(collect(edge)), " with weight $(H.weights[i])")
     end
 end
 
@@ -294,12 +311,13 @@ function unzip(H::Hypergraph{T}, z::Int)::Set{T} where T
 end
 
 """
-    submodular_width(H; [fds = FD[]], [verbose = false])
+    submodular_width(H; fds = FD[], dcs = DC[], verbose = false)
 
 Given a hypergraph `H` compute its submodular width. The submodular width is computed
 using equation (106) in [this paper](https://arxiv.org/pdf/1612.02503v4.pdf).
 
  - `fds` is an optional list of FDs
+ - `dcs` is an optional list of DCs
 """
 function submodular_width(
     H::Hypergraph{T};
@@ -368,6 +386,7 @@ function submodular_width(
         # are called "edge-domination" constraints.
         verbose && println("\nEdge-domination Constraints:")
         for (i, edge) in enumerate(H.edges)
+            isinf(H.weights[i]) && continue
             E = zip(H, edge)
             @constraint(model, h[E] ≤ H.weights[i])
             verbose && println("$(f(E)) ≤ $(H.weights[i])")
@@ -388,6 +407,7 @@ function submodular_width(
             DC variables must be a contained in a hyperedge of the hypergraph. The following
             DC does not satisfy this condition: $dc
             """
+            isinf(dc.n) && continue
             X = zip(H, dc.X)
             Y = zip(H, dc.Y)
             @constraint(model, h[Y] - h[X] ≤ dc.n)
@@ -469,7 +489,9 @@ end
 """
     get_tds(edges)
 
-Construct all non-redundant tree decompositions of `edges`
+Construct all non-redundant tree decompositions of `edges`. Remove tree decompositions that
+are "subsumed" by others. If a tree decomposition `td1` is subsumed by `td2`, then including
+`td1` in the computation of fractional hypertree width or submodular width is redundant.
 """
 function get_tds(edges::Vector{Vector{T}})::Vector{Vector{Set{T}}} where T
     # convert `edges` from `Vector{Vector{T}}` to `Set{Set{T}}`
@@ -488,6 +510,26 @@ function get_tds(edges::Vector{Vector{T}})::Vector{Vector{Set{T}}} where T
     tds = map(td -> collect(td), collect(tds))
     tds = _remove_subsumed_tds(tds)
     return tds
+end
+
+"""
+    get_trivial_tds(edges)
+    get_trivial_tds(vars)
+
+Given a list of edges (or vertices) of a hypergraph, return a list of tree decompositions
+that contain only the trivial tree decomposition consisting of a single bag containing all
+vertices of the hypergraph
+"""
+function get_trivial_tds(
+    edges::Union{Vector{Vector{T}},Vector{Set{T}}}
+)::Vector{Vector{Set{T}}} where T
+    vars = reduce(union!, edges; init = Set{T}())
+    return get_trivial_tds(vars)
+end
+function get_trivial_tds(
+    vars::Union{Vector{T},Set{T}}
+)::Vector{Vector{Set{T}}} where T
+    return [[Set{T}(vars)]]
 end
 
 """
@@ -590,6 +632,34 @@ function _get_bag_selectors(tds::Vector{Vector{Set{T}}}) where T
         println("            Number of bag selectors so far: $(length(selectors))")
     end
     return selectors
+end
+
+"""
+    polymatroid_bound(H; fds = FD[], dcs = DC[], verbose = false)
+
+Compute the polymatroid bound of a hypergraph `H`. The polymatroid bound is a special case
+of the submodular width where we only use a single tree decomposition with a single bag
+containing all variables of the hypergraph.
+
+- `fds` is an optional list of FDs
+- `dcs` is an optional list of DCs
+
+*NOTE* The default weights of the hyperedges are all `1.0`. However, when computing the
+polymatroid bound with proper DC constraints, those weights should be set to the log of the
+sizes of the corresponding relations. (The weight can be ∞ if the relation is infinite, e.g.
+`x + y = z`)
+"""
+function polymatroid_bound(
+    H::Hypergraph{T};
+    fds::Vector{FD{T}} = FD{T}[],
+    dcs::Vector{DC{T}} = DC{T}[],
+    verbose::Bool = false,
+) where T
+    # The polymatroid bound is a special case of the submodular width where we only use a
+    # single tree decomposition with a single bag containing all variables of the hypergraph
+    H = copy(H)
+    H.tds = get_trivial_tds(H.vars)
+    return submodular_width(H; fds, dcs, verbose)
 end
 
 #==========================================================================================#
@@ -746,6 +816,71 @@ function test_example_6()
     @assert subw_fds ≈ 1.5
 end
 
+# Example from Figure 1 on page 8 here: https://arxiv.org/pdf/1604.00111
+# Q :- R(x, y), S(y, z), T(z, u), xz --> u, yu --> x
+function test_polymatroid_bound1()
+    println(repeat("=", 80))
+    H = Hypergraph(
+        ['x', 'y', 'z', 'u'],
+        [
+            ['x', 'y'],      # R(x, y)
+            ['y', 'z'],      # S(y, z)
+            ['z', 'u'],      # T(z, u)
+            ['x', 'z', 'u'], # xz --> u
+            ['y', 'u', 'x'], # yu --> x
+        ];
+        weights = [
+            1.0,
+            1.0,
+            1.0,
+            Inf,
+            Inf,
+        ]
+    )
+    @show(H)
+    pb = polymatroid_bound(H)
+    @assert pb ≈ 2.0
+    fds = FD{Char}[
+        FD(['x', 'z'], ['u']),
+        FD(['y', 'u'], ['x']),
+    ]
+    pb = polymatroid_bound(H; fds = fds)
+    @assert pb ≈ 1.5
+end
+
+# A variant of `test_polymatroid_bound1()`
+function test_polymatroid_bound1_variant()
+    println(repeat("=", 80))
+    H = Hypergraph(
+        ['x', 'y', 'z', 'u'],
+        [
+            ['x', 'y'],      # R(x, y)
+            ['y', 'z'],      # S(y, z)
+            ['z', 'u'],      # T(z, u)
+            ['x', 'z', 'u'], # xz --> u
+            ['y', 'u', 'x'], # yu --> x
+        ];
+        weights = [
+            10.0,
+            11.0,
+            12.0,
+            Inf,
+            Inf,
+        ]
+    )
+    @show(H)
+    pb = polymatroid_bound(H)
+    @assert pb ≈ 22.0
+    fds = FD{Char}[
+        FD(['x', 'z'], ['u']),
+    ]
+    dcs = DC{Char}[
+        DC(['y', 'u'], ['x'], 2.0),
+    ]
+    pb = polymatroid_bound(H; fds = fds, dcs = dcs)
+    @assert pb ≈ 35/2
+end
+
 # Run all tests
 function test_all()
     test_4cycle()
@@ -755,6 +890,8 @@ function test_all()
     test_6cycle()
     test_6cycle_with_fds()
     test_example_6()
+    test_polymatroid_bound1()
+    test_polymatroid_bound1_variant()
 end
 
 end

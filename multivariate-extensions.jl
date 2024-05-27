@@ -59,6 +59,7 @@ end
 # ----------
 
 function test_triangle()
+    println(repeat("=", 80))
     H = Hypergraph(
         [:A, :B, :C],
         [[:A, :B], [:B, :C], [:C, :A]],
@@ -70,6 +71,7 @@ function test_triangle()
 end
 
 function test_LW4()
+    println(repeat("=", 80))
     H = Hypergraph(
         [1, 2, 3, 4],
         [[1, 2, 3], [2, 3, 4], [3, 4, 1], [4, 1, 2]],
@@ -81,6 +83,7 @@ function test_LW4()
 end
 
 function test_2path()
+    println(repeat("=", 80))
     H = Hypergraph(
         [:A, :B, :C],
         [[:A, :B], [:B, :C]],
@@ -92,6 +95,7 @@ function test_2path()
 end
 
 function test_bowtie()
+    println(repeat("=", 80))
     H = Hypergraph(
         [:A, :B],
         [[:A], [:A, :B], [:B]],
@@ -103,6 +107,7 @@ function test_bowtie()
 end
 
 function test_2path_with_endpoints()
+    println(repeat("=", 80))
     H = Hypergraph(
         [:A, :B, :C],
         [[:A], [:A, :B], [:B, :C], [:C]],
