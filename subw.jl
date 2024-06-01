@@ -49,18 +49,13 @@ mutable struct Hypergraph{T}
 
     Construct a hypergraph `H` with vertices `vars` and hyperedges `edges`. Optional
     `weights` and `tds` can be provided. By default, the weights of the hyperedges are all
-    `1.0`, and the tree decompositions `tds` are computed using `get_tds(edges)`.
-
-    NOTE: The computation of tree decompositions (using `get_tds(edges)`) can be expensive.
-    If you don't need TDs (e.g. you are only interested in the polymatroid bound), you could
-    provide `tds = get_trivial_tds(edges)` instead, to use a single TD with a single bag
-    containing all vars.
+    `1.0`, and the vector oftree decompositions `tds` is empty.
     """
     function Hypergraph(
         vars::Vector{T},
         edges::Union{Vector{Vector{T}},Vector{Set{T}}};
         weights::Vector{Float64} = ones(length(edges)),
-        tds::Vector{Vector{Set{T}}} = get_tds(edges)
+        tds::Vector{Vector{Set{T}}} = Vector{Vector{Set{T}}}()
         # Alternatively, use `tds = get_trivial_tds(edges)` to skip the above expensive
         # computation of TDs, if TDs are not needed (e.g. for the polymatroid bound)
     ) where T
@@ -93,11 +88,16 @@ end
 
 # Copy a hypergraph
 function Base.copy(H::Hypergraph{T}) where T
+    if length(H.tds) == 0
+        tds = Vector{Vector{Set{T}}}()
+    else
+        tds = [[copy(bag) for bag in td] for td in H.tds]
+    end
     return Hypergraph(
         copy(H.vars),
         [copy(E) for E in H.edges];
         weights = copy(H.weights),
-        tds = [[copy(bag) for bag in td] for td in H.tds]
+        tds
     )
 end
 
@@ -106,6 +106,13 @@ function Base.show(io::IO, H::Hypergraph{T}) where T
     println(io, "    and hyperedges:")
     for (i, edge) ∈ enumerate(H.edges)
         println(io, "        ", sort(collect(edge)), " with weight $(H.weights[i])")
+    end
+end
+
+# if the TDs are missing in the hypergraph, initize them to contain all possible TDs
+function initialize_tds_if_missing(H)
+    if length(H.tds) == 0
+        H.tds = get_tds(H.edges)
     end
 end
 
@@ -249,12 +256,15 @@ end
 """
     fractional_hypertree_width(H, [verbose])
 
-Compute the fractional hypertree width of hypergraph `H`
+Compute the fractional hypertree width of hypergraph `H`. If the vector of 
+tree decompositions of `H` is empty, it is updated to contain all tree decompositions
+of `H`.
 """
 function fractional_hypertree_width(
     H::Hypergraph{T};
     verbose::Bool = false,
 ) where T
+    initialize_tds_if_missing(H)
     fhtw = Inf
     best_td = 0
     # for each tree decomposition `td` of `H`
@@ -318,6 +328,9 @@ using equation (106) in [this paper](https://arxiv.org/pdf/1612.02503v4.pdf).
 
  - `fds` is an optional list of FDs
  - `dcs` is an optional list of DCs
+
+ If the vector of tree decompositions is empty, it is updated to contain all possible
+ tree decompositions of the hypergraph.
 """
 function submodular_width(
     H::Hypergraph{T};
@@ -333,6 +346,7 @@ function submodular_width(
     # To compute the submodular width of `H`, we have to solve a linear program for each
     # combination of bags `(bag1, bag2, ⋯, bag_k)` where `bag1 ∈ td1, bag2 ∈ td2, …,`
     # `bag_k ∈ td_k` and take the maximum value across all such combinations.
+    initialize_tds_if_missing(H)
     selectors = _get_bag_selectors(H.tds)
     # selectors = Iterators.product(H.tds...,)
     println("    Final number of bag selectors: $(length(selectors))")
@@ -493,7 +507,7 @@ Construct all non-redundant tree decompositions of `edges`. Remove tree decompos
 are "subsumed" by others. If a tree decomposition `td1` is subsumed by `td2`, then including
 `td1` in the computation of fractional hypertree width or submodular width is redundant.
 """
-function get_tds(edges::Vector{Vector{T}})::Vector{Vector{Set{T}}} where T
+function get_tds(edges::Union{Vector{Vector{T}},Vector{Set{T}}})::Vector{Vector{Set{T}}} where T
     # convert `edges` from `Vector{Vector{T}}` to `Set{Set{T}}`
     edges = Set{Set{T}}(map(edge -> Set{T}(edge), edges))
     tds = Set{Set{Set{T}}}()
