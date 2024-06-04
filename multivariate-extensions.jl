@@ -163,6 +163,19 @@ end
 # Ahmet's queries:
 # ================
 
+# # triangle + one atom
+# H = Hypergraph(
+#     [:A, :B, :C],
+#     [[:A, :B], [:B, :C], [:C, :A], [:C]],
+# )
+
+# E = get_multivariate_extension(H, [:Z1, :Z2, :Z3, :Z4])
+# @warn "$(length(E))"
+# println("RESULT:", fractional_hypertree_width(E))
+# # Result: 5/3
+
+# # ----------------------------------------------------------------------------
+
 # # Q_1
 # H = Hypergraph(
 #     [:A, :B, :C, :D, :E, :F],
