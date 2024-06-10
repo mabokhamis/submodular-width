@@ -256,7 +256,7 @@ end
 """
     fractional_hypertree_width(H, [verbose])
 
-Compute the fractional hypertree width of hypergraph `H`. If the vector of 
+Compute the fractional hypertree width of hypergraph `H`. If the vector of
 tree decompositions of `H` is empty, it is updated to contain all tree decompositions
 of `H`.
 """
@@ -940,5 +940,35 @@ function test_all()
     test_polymatroid_bound1_variant()
     test_polymatroid_bound2()
 end
+
+# Xiao's example
+H = Hypergraph(
+    ['a', 'b', 'c', 'd', 'e', 'f'],
+    [
+        ['a', 'b'],
+        ['a', 'c'],
+        ['b', 'c'],
+        ['c', 'd'],
+        ['d', 'e'],
+        ['d', 'f'],
+        ['e', 'f']
+    ],
+    tds = [
+        [
+            Set(['a', 'b', 'c', 'd']),
+            Set(['a', 'b', 'd', 'e', 'f']),
+        ],
+        [
+            Set(['c', 'd', 'e', 'f']),
+            Set(['a', 'b', 'c', 'e', 'f']),
+        ]
+    ]
+)
+
+# This is the free-connex fractional hypertree width
+println(fractional_hypertree_width(H))
+
+# This is the free-connex submodular width
+println(submodular_width(H))
 
 end
