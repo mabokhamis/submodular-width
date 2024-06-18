@@ -230,7 +230,7 @@ function _simplify(m::Union{Min{T},Max{T}}, quick::Bool) where T
 
     quick && return (false, m)
 
-    if (m isa Min || m isa Max) && length(m.args) <= 1000
+    if (m isa Min || m isa Max) && length(m.args) <= 100
         println("A: Start $(length(m.args))")
         new_args = minimal_args(m.args;
             subsumed_by = m isa Min ? _min_subsumed_by : _max_subsumed_by)
@@ -313,6 +313,7 @@ function create_matrix_multiplication(
 ) where T
     @assert isempty(X ∩ Y) && isempty(X ∩ Z) && isempty(X ∩ W) && isempty(Y ∩ Z) &&
         isempty(Y ∩ W) && isempty(Z ∩ W)
+    @warn "create_matrix_multiplication:\n    X = $X, Y = $Y, Z = $Z, W = $W"
     one = Constant(1.0)
     ω2 = Constant(ω-2, "ω'")
     α = Constant(-ω+1, "α")
@@ -352,17 +353,20 @@ function eliminate_variable(H::Hypergraph{T}, x::Set{T}, ω::Number) where T
     args = Vector{Term{T}}()
     push!(args, Sum(Dict(U => Constant(1.0))))
     k = length(Nx)
-    for s ∈ powerset(collect(1:k))
-        (isempty(s) || length(s) == k) && continue
-        A = reduce(union!, Nx[i] for i ∈ s; init = Set{T}())
-        B = reduce(union!, Nx[i] for i ∈ 1:k if i ∉ s; init = Set{T}())
-        Y = A ∩ B ∩ P
-        W = setdiff(A ∩ B, P)
-        X = setdiff(A, B)
-        Z = setdiff(B, A)
-        (isempty(X) || isempty(Y) || isempty(Z)) && continue
-        arg = create_matrix_multiplication(X, Y, Z, W, ω)
-        push!(args, arg)
+    for t1 ∈ powerset(collect(1:k))
+        (isempty(t1) || length(t1) == k) && continue
+        for t2 ∈ powerset(t1)
+            length(t2) == length(t1) && continue
+            A = reduce(union!, Nx[i] for i ∈ t1; init = Set{T}())
+            B = reduce(union!, Nx[i] for i ∈ 1:k if i ∉ t1 || i ∈ t2; init = Set{T}())
+            Y = A ∩ B ∩ P
+            W = setdiff(A ∩ B, P)
+            X = setdiff(A, B)
+            Z = setdiff(B, A)
+            (isempty(X) || isempty(Y) || isempty(Z)) && continue
+            arg = create_matrix_multiplication(X, Y, Z, W, ω)
+            push!(args, arg)
+        end
     end
     new_vars = setdiff(H.vars, P)
     new_edges = [[setdiff(E, P) for E ∈ Px]; setdiff(U, P)]
@@ -392,16 +396,22 @@ function generalized_var_elimination_orders(V::Union{Set{T},Vector{T}}) where T
     return result
 end
 
+function var_elimination_orders(V::Union{Set{T},Vector{T}}) where T
+    V = collect(V)
+    @assert length(unique(V)) == length(V)
+    @assert !isempty(V)
+    result = Vector{Vector{Set{T}}}()
+    for π ∈ permutations(V)
+        push!(result, map(x -> Set{T}((x,)), π))
+    end
+    return result
+end
+
 function eliminate_variables(H::Hypergraph{T}, ω::Number) where T
     min_args = Vector{Term{T}}()
-    VOs = generalized_var_elimination_orders(H.vars)
-    # VOs = [
-    #     [Set(["B"]), Set(["C"]), Set(["D"]), Set(["A"])],
-    #     [Set(["C"]), Set(["D"]), Set(["B"]), Set(["A"])],
-    #     [Set(["D"]), Set(["B"]), Set(["C"]), Set(["A"])],
-    # ]
+    # VOs = generalized_var_elimination_orders(H.vars)
+    VOs = var_elimination_orders(H.vars)
     for π ∈ VOs
-        # any(length(x) > 1 for x ∈ π) && continue
         new_H = H
         max_args = Vector{Term{T}}()
         for x ∈ π
@@ -613,15 +623,15 @@ end
 
 #-----------------------------------------------
 
-# H = Hypergraph(
-#     ["A", "B1", "B2", "B3"],
-#     [["B1", "B2", "B3"], ["A", "B1"], ["A", "B2"], ["A", "B3"]]
-# )
+H = Hypergraph(
+    ["A", "B1", "B2", "B3"],
+    [["B1", "B2", "B3"], ["A", "B1"], ["A", "B2"], ["A", "B3"]]
+)
 
-# ω = 2
-# w = omega_submodular_width(H, ω; verbose = false)
-# println(w)
-# println(1 + 2 * ω / (2ω + 3))
+ω = 2
+w = omega_submodular_width(H, ω; verbose = false)
+println(w)
+println(1 + 2 * ω / (2ω + 3))
 
 #=
 for ω = 3.0
@@ -637,15 +647,15 @@ for ω = 2.0
 
 #-----------------------------------------------
 
-H = Hypergraph(
-    ["A", "B", "C", "D"],
-    [["A", "B"], ["A", "C"], ["A", "D"], ["B", "C"], ["B", "D"], ["C", "D"]]
-)
+# H = Hypergraph(
+#     ["A", "B", "C", "D"],
+#     [["A", "B"], ["A", "C"], ["A", "D"], ["B", "C"], ["B", "D"], ["C", "D"]]
+# )
 
-ω = 2.0
-w = omega_submodular_width(H, ω; verbose = false)
-println(w)
-println((ω + 1)/2)
+# ω = 2.0
+# w = omega_submodular_width(H, ω; verbose = false)
+# println(w)
+# println((ω + 1)/2)
 
 #=
 for ω = 3.0
