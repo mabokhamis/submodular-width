@@ -671,13 +671,38 @@ for ω = 2.0
 
 #-----------------------------------------------
 
+# # 4-cycle:
+# H = Hypergraph(
+#     ["A", "B", "C", "D"],
+#     [["A", "B"], ["B", "C"], ["C", "D"], ["D", "A"]]
+# )
+
+# ω = 2
+# w = omega_submodular_width(H, ω; verbose = false)
+# println(w)
+# #=
+# for ω = 3.0
+#     omega_submodular_width = 1.5
+# for ω = 2.0
+#     omega_submodular_width = 1.4
+# =#
+
+#-----------------------------------------------
+
+# 5-cycle:
 H = Hypergraph(
-    ["A", "B", "C", "D"],
-    [["A", "B"], ["B", "C"], ["C", "D"], ["D", "A"]]
+    ["A", "B", "C", "D", "E"],
+    [["A", "B"], ["B", "C"], ["C", "D"], ["D", "E"], ["E", "A"]]
 )
 
 ω = 2
 w = omega_submodular_width(H, ω; verbose = false)
-println(w)      # 1.4
+println(w)
+#=
+for ω = 3.0
+    omega_submodular_width = 5/3
+for ω = 2.0
+    omega_submodular_width = 1.5
+=#
 
 end
