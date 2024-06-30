@@ -678,6 +678,6 @@ H = Hypergraph(
 
 ω = 2
 w = omega_submodular_width(H, ω; verbose = false)
-println(w)
+println(w)      # 1.4
 
 end
