@@ -707,37 +707,31 @@ for ω = 2.0
 
 #-----------------------------------------------
 
+H = Hypergraph(
+    ["A", "B", "C", "D", "E"],
+    [["A", "B", "C", "D"], ["B", "C", "E"], ["B", "D", "E"], ["C", "D", "E"], ["A", "E"]]
+)
+
+ω = 2
+w = omega_submodular_width(H, ω; verbose = false)
+println(w)                      # 1.4285714285714286
+println(2 - 10/(6 * ω + 7))     # 1.473684210526316
+
+#-----------------------------------------------
+
 # H = Hypergraph(
-#     ["A", "B", "C", "D", "E"],
-#     [["A", "B", "C", "D"], ["B", "C", "E"], ["B", "D", "E"], ["C", "D", "E"], ["A", "E"]]
+#     ["A", "B", "C", "D"],
+#     [["A", "B", "C"], ["B", "C", "D"], ["C", "D", "A"], ["D", "A", "B"]]
 # )
 
 # ω = 2
 # w = omega_submodular_width(H, ω; verbose = false)
 # println(w)
-# println(2 - 10/(6 * ω + 7))
 # #=
 # for ω = 3.0
 #     omega_submodular_width = 5/3
 # for ω = 2.0
 #     omega_submodular_width = 1.5
 # =#
-
-#-----------------------------------------------
-
-H = Hypergraph(
-    ["A", "B", "C", "D"],
-    [["A", "B", "C"], ["B", "C", "D"], ["C", "D", "A"], ["D", "A", "B"]]
-)
-
-ω = 2
-w = omega_submodular_width(H, ω; verbose = false)
-println(w)
-#=
-for ω = 3.0
-    omega_submodular_width = 5/3
-for ω = 2.0
-    omega_submodular_width = 1.5
-=#
 
 end
