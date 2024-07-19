@@ -26,6 +26,7 @@ fields:
 mutable struct Hypergraph{T}
     vars::Vector{T}
     edges::Vector{Set{T}}
+    weights::Vector
 
     # `var_index` maps a vertex `vars[i]` in `vars` to its index `i`
     var_index::Dict{T, Int}
@@ -33,13 +34,14 @@ mutable struct Hypergraph{T}
     function Hypergraph(
         vars::Vector{T},
         edges::Vector{<:Union{Vector{T},Set{T}}};
+        weights = ones(length(edges))
     ) where T
         @assert length(unique(vars)) == length(vars)
         var_index = Dict{T, Int}(var => i for (i, var) in enumerate(vars))
         @assert all(e ⊆ vars for e in edges)
         edges = map(edge -> Set{T}(edge), edges)
         @assert all(reduce(union!, edges; init = Set{T}()) == Set{T}(vars))
-        return new{T}(vars, edges, var_index)
+        return new{T}(vars, edges, weights, var_index)
     end
 end
 
@@ -49,12 +51,12 @@ end
 Given a hypergraph `H` and a subset `U` of the vertices of `H`, encode `U` as a string of
 bits. For example, `{v1, v3, v4, v8}` is encoded as the binary string `10001101`
 """
-function zip(H::Hypergraph{T}, U::Set{T})::Int where T
+function zip(H::Hypergraph{T}, U::Union{Set{T},Vector{T}})::Int where T
     @assert U ⊆ H.vars
     return zip(H.var_index, U)
 end
 
-function zip(var_index::Dict{T, Int}, U::Set{T})::Int where T
+function zip(var_index::Dict{T, Int}, U::Union{Set{T},Vector{T}})::Int where T
     z = 0
     for x in U
         z |= (1 << (var_index[x] - 1))
@@ -90,7 +92,7 @@ end
 
 Given a set `U` of vertices, return a string representing `h(U)`
 """
-function name(U::Set{T})::String where T
+function name(U::Union{Set{T},Vector{T}})::String where T
     return "h(" * join(map(string, sort(collect(U)))) * ")"
 end
 
@@ -231,10 +233,10 @@ function _simplify(m::Union{Min{T},Max{T}}, quick::Bool) where T
     quick && return (false, m)
 
     if (m isa Min || m isa Max) && length(m.args) <= 100
-        println("A: Start $(length(m.args))")
+        length(m.args) >= 15 && println("A: Start $(length(m.args))")
         new_args = minimal_args(m.args;
             subsumed_by = m isa Min ? _min_subsumed_by : _max_subsumed_by)
-        println("A: End $(length(new_args))")
+        length(m.args) >= 15 && println("A: End $(length(new_args))")
         if length(new_args) != length(m.args)
             return (true, typeof(m)(new_args))
         end
@@ -251,13 +253,13 @@ function _simplify(m::Union{Min{T},Max{T}}, quick::Bool) where T
                 push!(new_args, [arg])
             end
         end
-        println("B: $num_args")
+        num_args >= 15 && println("B: $num_args")
         selectors = Iterators.product(new_args...,)
         new_args = Vector{Term{T}}()
         for β ∈ selectors
             push!(new_args, Min(collect(β)))
         end
-        println("B: End")
+        num_args >= 15 && println("B: End")
         return (true, Max(new_args))
     end
 
@@ -542,10 +544,10 @@ function omega_submodular_width(H::Hypergraph{T}, m::Min{T}; verbose::Bool = tru
     # For each hyperedge `e` in `H`, the LP contains a constraint `h[e] ≤ 1.0`. These
     # are called "edge-domination" constraints.
     verbose && println("\nEdge-domination Constraints:")
-    for edge in H.edges
+    for (i, edge) in enumerate(H.edges)
         E = zip(H, edge)
-        @constraint(model, h[E] ≤ 1.0)
-        verbose && println("$(f(E)) ≤ 1.0")
+        @constraint(model, h[E] ≤ H.weights[i])
+        verbose && println("$(f(E)) ≤ $(H.weights[i])")
     end
 
     # verbose && println("\nDegree-case Constraints:")
@@ -575,7 +577,7 @@ function omega_submodular_width(H::Hypergraph{T}, m::Min{T}; verbose::Bool = tru
 
     obj = objective_value(model)
 
-    verbose && println("\nOptimal Solution:")
+    println("\nOptimal Primal Solution:")
     sol = value.(h)
     for i = 0:N-1
         verbose && println("$(f(i)) = $(sol[i])")
@@ -707,21 +709,21 @@ for ω = 2.0
 
 #-----------------------------------------------
 
-H = Hypergraph(
-    ["A", "B", "C", "D", "E"],
-    [["A", "B", "D"], ["A", "B", "E"], ["A", "C"], ["B", "C"], ["C", "D", "E"]]
-)
+# H = Hypergraph(
+#     ["A", "B", "C", "D", "E"],
+#     [["A", "B", "D"], ["A", "B", "E"], ["A", "C"], ["B", "C"], ["C", "D", "E"]]
+# )
 
-ω = 2
-w = omega_submodular_width(H, ω; verbose = false)
-println(w)
-println(2 - 5/(6 * ω + 7))
+# ω = 2
+# w = omega_submodular_width(H, ω; verbose = false)
+# println(w)
+# println(2 - 5/(6 * ω + 7))
 
 #-----------------------------------------------
 
 # H = Hypergraph(
 #     ["A", "B", "C", "D", "E"],
-#     [["A", "B", "C", "D"], ["B", "C", "E"], ["B", "D", "E"], ["C", "D", "E"], ["A", "E"]]
+#     [["A", "B", "C", "D"], ["B", "C", "E"], ["B", "D", "E"], ["C", "D", "E"], ["A", "E"]];
 # )
 
 # ω = 2
