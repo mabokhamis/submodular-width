@@ -550,14 +550,6 @@ function omega_submodular_width(H::Hypergraph{T}, m::Min{T}; verbose::Bool = tru
         verbose && println("$(f(E)) ≤ $(H.weights[i])")
     end
 
-    # verbose && println("\nDegree-case Constraints:")
-    # v = first(H.vars)
-    # # for v in H.vars
-    #     E = zip(H, Set{T}((v,)))
-    #     @constraint(model, h[E] ≥ 0.5)
-    #     verbose && println("$(f(E)) ≥ 0.5")
-    # # end
-
     @variable(model, w >= 0.0)
 
     verbose && println("\nObjective Constraints:")
@@ -747,5 +739,16 @@ for ω = 2.0
 # for ω = 2.0
 #     omega_submodular_width = 1.5
 # =#
+
+#-----------------------------------------------
+
+H = Hypergraph(
+    ["A1", "A2", "B1", "B2", "C1", "C2"],
+    [["A1", "A2", "B1", "B2"], ["B1", "B2", "C1", "C2"], ["A1", "A2", "C1", "C2"]];
+)
+
+ω = 2
+w = omega_submodular_width(H, ω; verbose = false)
+println(w)
 
 end
