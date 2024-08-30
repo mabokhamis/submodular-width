@@ -26,23 +26,29 @@ fields:
 mutable struct Hypergraph{T}
     vars::Vector{T}
     edges::Vector{Set{T}}
-    weights::Vector
 
     # `var_index` maps a vertex `vars[i]` in `vars` to its index `i`
     var_index::Dict{T, Int}
 
     function Hypergraph(
         vars::Vector{T},
-        edges::Vector{<:Union{Vector{T},Set{T}}};
-        weights = ones(length(edges))
+        edges::Vector{<:Union{Vector{T},Set{T}}}
     ) where T
         @assert length(unique(vars)) == length(vars)
         var_index = Dict{T, Int}(var => i for (i, var) in enumerate(vars))
         @assert all(e ⊆ vars for e in edges)
         edges = map(edge -> Set{T}(edge), edges)
         @assert all(reduce(union!, edges; init = Set{T}()) == Set{T}(vars))
-        return new{T}(vars, edges, weights, var_index)
+        return new{T}(vars, edges, var_index)
     end
+end
+
+# Copy a hypergraph
+function Base.copy(H::Hypergraph{T}) where T
+    return Hypergraph(
+        copy(H.vars),
+        [copy(E) for E in H.edges]
+    )
 end
 
 """
@@ -280,32 +286,6 @@ function simplify(t::Term{T}, quick::Bool = false) where T
     return rewritten ? simplify(t, true) : t
 end
 
-# exp =
-# Max([
-#     Min([
-#         Max([
-#             Sum(Dict(Set(["A"]) => Constant(1.0))),
-#             Sum(Dict(Set(["B"]) => Constant(1.0))),
-#         ]),
-#         Max([
-#             Sum(Dict(Set(["C"]) => Constant(1.0))),
-#             Sum(Dict(Set(["D"]) => Constant(1.0))),
-#         ]),
-#         Max([
-#             Sum(Dict(Set(["C"]) => Constant(1.0))),
-#             Sum(Dict(Set(["D"]) => Constant(1.0))),
-#         ]),
-#     ]),
-#     Sum(Dict(Set(["A"]) => Constant(1.0), Set(["B"]) => Constant(0.9))),
-#     Sum(Dict(Set(["A"]) => Constant(0.9), Set(["B"]) => Constant(1.9))),
-# ])
-
-# println(exp)
-
-# @time exp = simplify(exp)
-
-# println(exp)
-
 function create_matrix_multiplication(
     X::Set{T},
     Y::Set{T},
@@ -341,12 +321,9 @@ function create_matrix_multiplication(
     ])
 end
 
-# e = create_matrix_multiplication(Set(["A"]), Set(["B"]), Set(["C"]), Set{String}(), 2.5)
-# println(simplify(e))
-
-function eliminate_variable(H::Hypergraph{T}, x::Set{T}, ω::Number) where T
-    Nx = [E for E ∈ H.edges if !isempty(x ∩ E)]
-    Px = [E for E ∈ H.edges if isempty(x ∩ E)]
+function eliminate_variable(H::Hypergraph{T}, x::T, ω::Number) where T
+    Nx = [E for E ∈ H.edges if x ∈ E]
+    Px = [E for E ∈ H.edges if x ∉ E]
     U = reduce(union!, Nx; init = Set{T}())
     P = copy(U)
     for E ∈ Px
@@ -378,48 +355,15 @@ function eliminate_variable(H::Hypergraph{T}, x::Set{T}, ω::Number) where T
     return new_H, expr
 end
 
-function generalized_var_elimination_orders(V::Union{Set{T},Vector{T}}) where T
-    V = collect(V)
-    @assert length(unique(V)) == length(V)
-    @assert !isempty(V)
-    result = Vector{Vector{Set{T}}}()
-    for X ∈ powerset(V)
-        isempty(X) && continue
-        Y = setdiff(V, X)
-        if isempty(Y)
-            push!(result, [Set{T}(X)])
-        else
-            result2 = generalized_var_elimination_orders(Y)
-            for Z in result2
-                push!(result, [Set{T}(X); Z])
-            end
-        end
-    end
-    return result
-end
-
-function var_elimination_orders(V::Union{Set{T},Vector{T}}) where T
-    V = collect(V)
-    @assert length(unique(V)) == length(V)
-    @assert !isempty(V)
-    result = Vector{Vector{Set{T}}}()
-    for π ∈ permutations(V)
-        push!(result, map(x -> Set{T}((x,)), π))
-    end
-    return result
-end
-
 function eliminate_variables(H::Hypergraph{T}, ω::Number) where T
     min_args = Vector{Term{T}}()
-    # VOs = generalized_var_elimination_orders(H.vars)
-    VOs = var_elimination_orders(H.vars)
+    VOs = permutations(H.vars)
     for π ∈ VOs
-        new_H = H
+        new_H = Base.copy(H)
         max_args = Vector{Term{T}}()
         for x ∈ π
-            y = x ∩ new_H.vars
-            isempty(y) && continue
-            (new_H, expr) = eliminate_variable(new_H, y, ω)
+            x ∈ new_H.vars || continue
+            (new_H, expr) = eliminate_variable(new_H, x, ω)
             push!(max_args, expr)
         end
         arg = Max(max_args)
@@ -487,15 +431,6 @@ function is_non_negative(sum::Sum{T}) where T
     return solve(A, b)
 end
 
-# s = Sum(Dict(
-#     Set(["A", "B", "C"]) => Constant(-1.0),
-#     Set(["A", "B"]) => Constant(0.5),
-#     Set(["B", "C"]) => Constant(0.5),
-#     Set(["C", "A"]) => Constant(0.5),
-# ))
-
-# println(is_non_negative(s))
-
 function omega_submodular_width(H::Hypergraph{T}, m::Min{T}; verbose::Bool = true) where T
 
     n = length(H.vars)
@@ -544,10 +479,10 @@ function omega_submodular_width(H::Hypergraph{T}, m::Min{T}; verbose::Bool = tru
     # For each hyperedge `e` in `H`, the LP contains a constraint `h[e] ≤ 1.0`. These
     # are called "edge-domination" constraints.
     verbose && println("\nEdge-domination Constraints:")
-    for (i, edge) in enumerate(H.edges)
+    for edge in H.edges
         E = zip(H, edge)
-        @constraint(model, h[E] ≤ H.weights[i])
-        verbose && println("$(f(E)) ≤ $(H.weights[i])")
+        @constraint(model, h[E] ≤ 1.0)
+        verbose && println("$(f(E)) ≤ 1.0")
     end
 
     @variable(model, w >= 0.0)
@@ -605,15 +540,15 @@ end
 
 #-----------------------------------------------
 
-# H = Hypergraph(
-#     ["A", "B", "C"],
-#     [["A", "B"], ["B", "C"], ["A", "C"]]
-# )
+H = Hypergraph(
+    ["A", "B", "C"],
+    [["A", "B"], ["B", "C"], ["A", "C"]]
+)
 
-# ω = 2
-# w = omega_submodular_width(H, ω; verbose = false)
-# println(w)
-# println(2 * ω / (ω + 1))
+ω = 2
+w = omega_submodular_width(H, ω; verbose = false)
+println(w)
+println(2 * ω / (ω + 1))
 
 #-----------------------------------------------
 
@@ -742,13 +677,13 @@ for ω = 2.0
 
 #-----------------------------------------------
 
-H = Hypergraph(
-    ["A1", "A2", "B1", "B2", "C1", "C2"],
-    [["A1", "A2", "B1", "B2"], ["B1", "B2", "C1", "C2"], ["A1", "A2", "C1", "C2"]];
-)
+# H = Hypergraph(
+#     ["A1", "A2", "B1", "B2", "C1", "C2"],
+#     [["A1", "A2", "B1", "B2"], ["B1", "B2", "C1", "C2"], ["A1", "A2", "C1", "C2"]];
+# )
 
-ω = 2
-w = omega_submodular_width(H, ω; verbose = false)
-println(w)
+# ω = 2
+# w = omega_submodular_width(H, ω; verbose = false)
+# println(w)
 
 end
