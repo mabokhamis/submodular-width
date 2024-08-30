@@ -295,7 +295,7 @@ function create_matrix_multiplication(
 ) where T
     @assert isempty(X ∩ Y) && isempty(X ∩ Z) && isempty(X ∩ W) && isempty(Y ∩ Z) &&
         isempty(Y ∩ W) && isempty(Z ∩ W)
-    @warn "create_matrix_multiplication:\n    X = $X, Y = $Y, Z = $Z, W = $W"
+    # @warn "create_matrix_multiplication:\n    X = $X, Y = $Y, Z = $Z, W = $W"
     one = Constant(1.0)
     ω2 = Constant(ω-2, "ω'")
     α = Constant(-ω+1, "α")
@@ -329,29 +329,33 @@ function eliminate_variable(H::Hypergraph{T}, x::T, ω::Number) where T
     for E ∈ Px
         setdiff!(P, E)
     end
-    args = Vector{Term{T}}()
-    push!(args, Sum(Dict(U => Constant(1.0))))
-    k = length(Nx)
-    for t1 ∈ powerset(collect(1:k))
-        (isempty(t1) || length(t1) == k) && continue
-        for t2 ∈ powerset(t1)
-            length(t2) == length(t1) && continue
-            A = reduce(union!, Nx[i] for i ∈ t1; init = Set{T}())
-            B = reduce(union!, Nx[i] for i ∈ 1:k if i ∉ t1 || i ∈ t2; init = Set{T}())
-            Y = A ∩ B ∩ P
-            W = setdiff(A ∩ B, P)
-            X = setdiff(A, B)
-            Z = setdiff(B, A)
-            (isempty(X) || isempty(Y) || isempty(Z)) && continue
-            arg = create_matrix_multiplication(X, Y, Z, W, ω)
-            push!(args, arg)
+    if any(E == U for E ∈ Nx)
+        expr = nothing
+    else
+        args = Vector{Term{T}}()
+        push!(args, Sum(Dict(U => Constant(1.0))))
+        k = length(Nx)
+        for t1 ∈ powerset(collect(1:k))
+            (isempty(t1) || length(t1) == k) && continue
+            for t2 ∈ powerset(t1)
+                length(t2) == length(t1) && continue
+                A = reduce(union!, Nx[i] for i ∈ t1; init = Set{T}())
+                B = reduce(union!, Nx[i] for i ∈ 1:k if i ∉ t1 || i ∈ t2; init = Set{T}())
+                Y = A ∩ B ∩ P
+                W = setdiff(A ∩ B, P)
+                X = setdiff(A, B)
+                Z = setdiff(B, A)
+                (isempty(X) || isempty(Y) || isempty(Z)) && continue
+                arg = create_matrix_multiplication(X, Y, Z, W, ω)
+                push!(args, arg)
+            end
         end
+        expr = simplify(Min(args))
     end
     new_vars = setdiff(H.vars, P)
     new_edges = [[setdiff(E, P) for E ∈ Px]; setdiff(U, P)]
     filter(E -> !isempty(E), new_edges)
     new_H = Hypergraph(new_vars, new_edges)
-    expr = simplify(Min(args))
     return new_H, expr
 end
 
@@ -364,7 +368,7 @@ function eliminate_variables(H::Hypergraph{T}, ω::Number) where T
         for x ∈ π
             x ∈ new_H.vars || continue
             (new_H, expr) = eliminate_variable(new_H, x, ω)
-            push!(max_args, expr)
+            !isnothing(expr) && push!(max_args, expr)
         end
         arg = Max(max_args)
         push!(min_args, arg)
@@ -540,27 +544,27 @@ end
 
 #-----------------------------------------------
 
-H = Hypergraph(
-    ["A", "B", "C"],
-    [["A", "B"], ["B", "C"], ["A", "C"]]
-)
-
-ω = 2
-w = omega_submodular_width(H, ω; verbose = false)
-println(w)
-println(2 * ω / (ω + 1))
-
-#-----------------------------------------------
-
 # H = Hypergraph(
-#     ["A", "B1", "B2", "B3"],
-#     [["B1", "B2", "B3"], ["A", "B1"], ["A", "B2"], ["A", "B3"]]
+#     ["A", "B", "C"],
+#     [["A", "B"], ["B", "C"], ["A", "C"]]
 # )
 
 # ω = 2
 # w = omega_submodular_width(H, ω; verbose = false)
 # println(w)
-# println(1 + 2 * ω / (2ω + 3))
+# println(2 * ω / (ω + 1))
+
+#-----------------------------------------------
+
+H = Hypergraph(
+    ["A", "B1", "B2", "B3"],
+    [["B1", "B2", "B3"], ["A", "B1"], ["A", "B2"], ["A", "B3"]]
+)
+
+ω = 2
+w = omega_submodular_width(H, ω; verbose = false)
+println(w)
+println(1 + 2 * ω / (2ω + 3))
 
 #=
 for ω = 3.0
