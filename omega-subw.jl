@@ -15,6 +15,8 @@ using Combinatorics
 using DataStructures
 using AutoHashEquals
 
+#-------------------------------------------------------------------------------------------
+
 """
     Hypergraph{T}
 
@@ -58,7 +60,6 @@ Given a hypergraph `H` and a subset `U` of the vertices of `H`, encode `U` as a 
 bits. For example, `{v1, v3, v4, v8}` is encoded as the binary string `10001101`
 """
 function zip(H::Hypergraph{T}, U::Union{Set{T},Vector{T}})::Int where T
-    @assert U ⊆ H.vars
     return zip(H.var_index, U)
 end
 
@@ -99,8 +100,10 @@ end
 Given a set `U` of vertices, return a string representing `h(U)`
 """
 function name(U::Union{Set{T},Vector{T}})::String where T
-    return "h(" * join(map(string, sort(collect(U)))) * ")"
+    return "h(" * join(map(string, sort!(collect(U)))) * ")"
 end
+
+#-------------------------------------------------------------------------------------------
 
 struct Constant
     value::Float64
@@ -118,15 +121,24 @@ abstract type Term{T} end
 
 @auto_hash_equals struct Sum{T} <: Term{T}
     args::Dict{Set{T},Constant}
-end
 
-function Sum(args::Dict{Set{T},Constant}) where T
-    args = Dict(v => c for (v, c) in args if !isempty(v) && c.value != 0.0)
-    return Sum{T}(args)
+    function Sum(args::Dict{Set{T},Constant}) where T
+        args = Dict(v => c for (v, c) in args if !isempty(v) && c.value != 0.0)
+        return new{T}(args)
+    end
 end
 
 function coefficient(sum::Sum{T}, x::Set{T}) where T
     return  haskey(sum.args, x) ? sum.args[x].value : 0.0
+end
+
+function Base.:(+)(a::Sum{T}, b::Sum{T}) where T
+    args = Dict{Set{T}, Constant}()
+    for x ∈ keys(a.args) ∪ keys(b.args)
+        c = coefficient(a, x) + coefficient(b, x)
+        c != 0.0 && (args[x] = Constant(c))
+    end
+    return Sum(args)
 end
 
 function Base.:(-)(a::Sum{T}, b::Sum{T}) where T
@@ -286,6 +298,8 @@ function simplify(t::Term{T}, quick::Bool = false) where T
     return rewritten ? simplify(t, true) : t
 end
 
+#-------------------------------------------------------------------------------------------
+
 function create_matrix_multiplication(
     X::Set{T},
     Y::Set{T},
@@ -376,6 +390,8 @@ function eliminate_variables(H::Hypergraph{T}, ω::Number) where T
     return simplify(Min(min_args))
 end
 
+#-------------------------------------------------------------------------------------------
+
 function solve(A, b)
     model = Model(Clp.Optimizer)
     set_optimizer_attribute(model, "LogLevel", 0)
@@ -434,6 +450,8 @@ function is_non_negative(sum::Sum{T}) where T
 
     return solve(A, b)
 end
+
+#-------------------------------------------------------------------------------------------
 
 function omega_submodular_width(H::Hypergraph{T}, m::Min{T}; verbose::Bool = true) where T
 
@@ -517,18 +535,6 @@ function omega_submodular_width(H::Hypergraph{T}, m::Min{T}; verbose::Bool = tru
     return obj
 end
 
-# H = Hypergraph(
-#     ["A", "B", "C"],
-#     [["A", "B"], ["B", "C"], ["A", "C"]]
-# )
-
-# m = Min([
-#     Sum(Dict(Set(["A", "B", "C"]) => Constant(1.0))),
-#     Sum(Dict(Set(["A"]) => Constant(1.0), Set(["B"]) => Constant(1.0))),
-# ])
-
-# println(omega_submodular_width(H, m; verbose = true))
-
 function omega_submodular_width(H::Hypergraph{T}, ω::Number; verbose::Bool = true) where T
     expr = eliminate_variables(H, ω)
     # println(expr)
@@ -542,29 +548,29 @@ function omega_submodular_width(H::Hypergraph{T}, ω::Number; verbose::Bool = tr
     return width
 end
 
-#-----------------------------------------------
-
-# H = Hypergraph(
-#     ["A", "B", "C"],
-#     [["A", "B"], ["B", "C"], ["A", "C"]]
-# )
-
-# ω = 2
-# w = omega_submodular_width(H, ω; verbose = false)
-# println(w)
-# println(2 * ω / (ω + 1))
-
-#-----------------------------------------------
+#-------------------------------------------------------------------------------------------
 
 H = Hypergraph(
-    ["A", "B1", "B2", "B3"],
-    [["B1", "B2", "B3"], ["A", "B1"], ["A", "B2"], ["A", "B3"]]
+    ["A", "B", "C"],
+    [["A", "B"], ["B", "C"], ["A", "C"]]
 )
 
 ω = 2
 w = omega_submodular_width(H, ω; verbose = false)
 println(w)
-println(1 + 2 * ω / (2ω + 3))
+println(2 * ω / (ω + 1))
+
+#-----------------------------------------------
+
+# H = Hypergraph(
+#     ["A", "B1", "B2", "B3"],
+#     [["B1", "B2", "B3"], ["A", "B1"], ["A", "B2"], ["A", "B3"]]
+# )
+
+# ω = 2
+# w = omega_submodular_width(H, ω; verbose = false)
+# println(w)
+# println(1 + 2 * ω / (2ω + 3))
 
 #=
 for ω = 3.0
