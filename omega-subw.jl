@@ -123,7 +123,7 @@ abstract type Term{T} end
     args::Dict{Set{T},Constant}
 
     function Sum(args::Dict{Set{T},Constant}) where T
-        args = Dict(v => c for (v, c) in args if !isempty(v) && c.value != 0.0)
+        args = Dict(v => c for (v, c) in args if !isempty(v) && abs(c.value) > 1e-7)
         return new{T}(args)
     end
 end
@@ -135,8 +135,7 @@ end
 function Base.:(+)(a::Sum{T}, b::Sum{T}) where T
     args = Dict{Set{T}, Constant}()
     for x ∈ keys(a.args) ∪ keys(b.args)
-        c = coefficient(a, x) + coefficient(b, x)
-        c != 0.0 && (args[x] = Constant(c))
+        args[x] = Constant(coefficient(a, x) + coefficient(b, x))
     end
     return Sum(args)
 end
@@ -144,8 +143,7 @@ end
 function Base.:(-)(a::Sum{T}, b::Sum{T}) where T
     args = Dict{Set{T}, Constant}()
     for x ∈ keys(a.args) ∪ keys(b.args)
-        c = coefficient(a, x) - coefficient(b, x)
-        c != 0.0 && (args[x] = Constant(c))
+        args[x] = Constant(coefficient(a, x) - coefficient(b, x))
     end
     return Sum(args)
 end
@@ -214,15 +212,13 @@ function Base.:(<=)(a::Max, b::Max)
     return all(any(a2 <= b2 for b2 ∈ b.args) for a2 ∈ a.args)
 end
 
-_min_subsumed_by(i, a, j, b) = b <= a && (!(a <= b) || a <= b && j < i)
-_max_subsumed_by(i, a, j, b) = a <= b && (!(b <= a) || b <= a && j < i)
+_min_subsumed_by(i, a, j, b) = b <= a && (t = (a <= b); !t || t && j < i)
+_max_subsumed_by(i, a, j, b) = a <= b && (t = (b <= a); !t || t && j < i)
 
 function minimal_args(args::Vector{<:Term{T}}; subsumed_by::Function = _min_subsumed_by) where {T}
     new_args = Vector{Term{T}}()
     for (i, a) ∈ enumerate(args)
-        if any(subsumed_by(i, a, j, b) for (j, b) ∈ enumerate(args) if j != i)
-            continue
-        end
+        any(subsumed_by(i, a, j, b) for (j, b) ∈ enumerate(args) if j != i) && continue
         push!(new_args, a)
     end
     return new_args
@@ -300,37 +296,37 @@ end
 
 #-------------------------------------------------------------------------------------------
 
-function create_matrix_multiplication(
+function MM(
     X::Set{T},
     Y::Set{T},
     Z::Set{T},
-    W::Set{T},
+    G::Set{T},
     ω::Number
 ) where T
-    @assert isempty(X ∩ Y) && isempty(X ∩ Z) && isempty(X ∩ W) && isempty(Y ∩ Z) &&
-        isempty(Y ∩ W) && isempty(Z ∩ W)
-    # @warn "create_matrix_multiplication:\n    X = $X, Y = $Y, Z = $Z, W = $W"
+    @assert isempty(X ∩ Y) && isempty(X ∩ Z) && isempty(X ∩ G) && isempty(Y ∩ Z) &&
+        isempty(Y ∩ G) && isempty(Z ∩ G)
+    @warn "MM($X ; $Y ; $Z | $G)"
     one = Constant(1.0)
-    ω2 = Constant(ω-2, "ω'")
+    γ = Constant(ω-2, "γ")
     α = Constant(-ω+1, "α")
     return Max([
         Sum(Dict(
-            X ∪ W => one,
-            Y ∪ W=> one,
-            Z ∪ W=> ω2,
-            W => α,
+            X ∪ G => one,
+            Y ∪ G => one,
+            Z ∪ G => γ,
+            G => α,
         )),
         Sum(Dict(
-            X ∪ W => one,
-            Y ∪ W => ω2,
-            Z ∪ W => one,
-            W => α,
+            X ∪ G => one,
+            Y ∪ G => γ,
+            Z ∪ G => one,
+            G => α,
         )),
         Sum(Dict(
-            X ∪ W => ω2,
-            Y ∪ W => one,
-            Z ∪ W => one,
-            W => α,
+            X ∪ G => γ,
+            Y ∪ G => one,
+            Z ∪ G => one,
+            G => α,
         )),
     ])
 end
@@ -360,7 +356,7 @@ function eliminate_variable(H::Hypergraph{T}, x::T, ω::Number) where T
                 X = setdiff(A, B)
                 Z = setdiff(B, A)
                 (isempty(X) || isempty(Y) || isempty(Z)) && continue
-                arg = create_matrix_multiplication(X, Y, Z, W, ω)
+                arg = MM(X, Y, Z, W, ω)
                 push!(args, arg)
             end
         end
@@ -476,8 +472,8 @@ function omega_submodular_width(H::Hypergraph{T}, m::Min{T}; verbose::Bool = tru
     # For each `X ⊆ Y ⊆ V`, the LP contains a constraint `h[X] ≤ h[Y]`. These are called
     # "monotonicity constraints"
     verbose && println("\n(Basic) Monotonicity Constraints:")
+    Y = N - 1
     for y = 0:n-1
-        Y = N - 1
         X = Y & ~(1 << y)
         @constraint(model, h[Y] - h[X] ≥ 0.0)
         verbose && println("$(f(Y)) - $(f(X)) ≥ 0.0")
@@ -526,7 +522,7 @@ function omega_submodular_width(H::Hypergraph{T}, m::Min{T}; verbose::Bool = tru
 
     obj = objective_value(model)
 
-    println("\nOptimal Primal Solution:")
+    verbose && println("\nOptimal Primal Solution:")
     sol = value.(h)
     for i = 0:N-1
         verbose && println("$(f(i)) = $(sol[i])")
