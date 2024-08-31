@@ -142,8 +142,8 @@ abstract type Term{T} end
 @auto_hash_equals struct Sum{T} <: Term{T}
     args::Dict{Set{T},Constant}
 
-    function Sum(args::Dict{Set{T},Constant}) where T
-        args = Dict(v => c for (v, c) in args if !isempty(v) && abs(c.value) > 1e-7)
+    function Sum(args::Dict{Set{T},Constant}, τ::Number = 1e-7) where T
+        args = Dict(v => c for (v, c) in args if !isempty(v) && abs(c.value) > τ)
         return new{T}(args)
     end
 end
@@ -169,16 +169,36 @@ function Base.:(-)(a::Sum{T}, b::Sum{T}) where T
 end
 
 @auto_hash_equals struct Min{T} <: Term{T}
-    args::Vector{Term{T}}
-end
+    args::Set{Term{T}}
 
-Min(args::Vector{<:Term{T}}) where T = Min{T}(args)
+    function Min(args::Union{Set{<:Term{T}},Vector{<:Term{T}}}) where T
+        new_args = Set{Term{T}}()
+        for arg ∈ args
+            if arg isa Min || arg isa Max && length(arg.args) == 1
+                union!(new_args, arg.args)
+            else
+                push!(new_args, arg)
+            end
+        end
+        return new{T}(new_args)
+    end
+end
 
 @auto_hash_equals struct Max{T} <: Term{T}
-    args::Vector{Term{T}}
-end
+    args::Set{Term{T}}
 
-Max(args::Vector{<:Term{T}}) where T = Max{T}(args)
+    function Max(args::Union{Set{<:Term{T}},Vector{<:Term{T}}}) where T
+        new_args = Set{Term{T}}()
+        for arg ∈ args
+            if arg isa Max || arg isa Min && length(arg.args) == 1
+                union!(new_args, arg.args)
+            else
+                push!(new_args, arg)
+            end
+        end
+        return new{T}(new_args)
+    end
+end
 
 function pretty_print(io::IO, s::Sum; indent::Int = 0)
     margin = repeat(" ", indent)
@@ -235,7 +255,7 @@ end
 _min_subsumed_by(i, a, j, b) = b <= a && (t = (a <= b); !t || t && j < i)
 _max_subsumed_by(i, a, j, b) = a <= b && (t = (b <= a); !t || t && j < i)
 
-function minimal_args(args::Vector{<:Term{T}}; subsumed_by::Function = _min_subsumed_by) where {T}
+function _minimal_args(args::Vector{<:Term{T}}; subsumed_by::Function = _min_subsumed_by) where {T}
     new_args = Vector{Term{T}}()
     for (i, a) ∈ enumerate(args)
         any(subsumed_by(i, a, j, b) for (j, b) ∈ enumerate(args) if j != i) && continue
@@ -244,27 +264,19 @@ function minimal_args(args::Vector{<:Term{T}}; subsumed_by::Function = _min_subs
     return new_args
 end
 
+function remove_subsumed_args(m::Min{T}) where T
+    new_args = _minimal_args(m.args; subsumed_by = _min_subsumed_by)
+    return Min(new_args)
+end
+
+function remove_subsumed_args(m::Max{T}) where T
+    new_args = _minimal_args(m.args; subsumed_by = _max_subsumed_by)
+    return Max(new_args)
+end
+
 _simplify(s::Sum, quick::Bool) = (false, s)
 
 function _simplify(m::Union{Min{T},Max{T}}, quick::Bool) where T
-    new_args = unique(m.args)
-    if length(new_args) != length(m.args)
-        return (true, typeof(m)(new_args))
-    end
-
-    if any(_same_type(arg, m) for arg ∈ m.args)
-        new_args = Vector{Term{T}}()
-        for arg ∈ m.args
-            if _same_type(arg, m)
-                append!(new_args, arg.args)
-            else
-                push!(new_args, arg)
-            end
-        end
-        return (true, typeof(m)(new_args))
-    end
-
-    quick && return (false, m)
 
     if (m isa Min || m isa Max) && length(m.args) <= 100
         length(m.args) >= 15 && println("A: Start $(length(m.args))")
@@ -321,12 +333,13 @@ function MM(
     Y::Set{T},
     Z::Set{T},
     G::Set{T},
-    ω::Number
+    ω::Number,
+    verbose::Bool = false
 ) where T
     @assert isempty(X ∩ Y) && isempty(X ∩ Z) && isempty(X ∩ G) && isempty(Y ∩ Z) &&
         isempty(Y ∩ G) && isempty(Z ∩ G)
-    @warn "MM($X ; $Y ; $Z | $G)"
-    one = Constant(1.0)
+    verbose && println("MM($X ; $Y ; $Z | $G)")
+    one = Constant(1.0, "1")
     γ = Constant(ω-2, "γ")
     α = Constant(-ω+1, "α")
     return Max([
@@ -349,6 +362,12 @@ function MM(
             G => α,
         )),
     ])
+end
+
+function MM(
+    X::Vector{T}, Y::Vector{T}, Z::Vector{T}, G::Vector{T}, ω::Number, verbose::Bool = false
+) where T
+    return MM(Set{T}(X), Set{T}(Y), Set{T}(Z), Set{T}(G), ω, verbose)
 end
 
 function eliminate_variable(H::Hypergraph{T}, x::T, ω::Number) where T
@@ -564,15 +583,29 @@ end
 
 #-------------------------------------------------------------------------------------------
 
-H = Hypergraph(
-    ["A", "B", "C"],
-    [["A", "B"], ["B", "C"], ["A", "C"]]
-)
+function test()
+    ω = 2.5
+    t = Min([
+        MM(["X"], ["Y"], ["Z"], ["W"], ω),
+        MM(["Y"], ["Z"], ["X"], ["W"], ω),
+        MM(["Z"], ["X"], ["Y"], ["W"], ω),
+    ])
+    println(t)
+end
 
-ω = 2
-w = omega_submodular_width(H, ω; verbose = false)
-println(w)
-println(2 * ω / (ω + 1))
+test()
+
+#-------------------------------------------------------------------------------------------
+
+# H = Hypergraph(
+#     ["A", "B", "C"],
+#     [["A", "B"], ["B", "C"], ["A", "C"]]
+# )
+
+# ω = 2
+# w = omega_submodular_width(H, ω; verbose = false)
+# println(w)
+# println(2 * ω / (ω + 1))
 
 #-----------------------------------------------
 
