@@ -31,26 +31,46 @@ mutable struct Hypergraph{T}
 
     # `var_index` maps a vertex `vars[i]` in `vars` to its index `i`
     var_index::Dict{T, Int}
+end
 
-    function Hypergraph(
-        vars::Vector{T},
-        edges::Vector{<:Union{Vector{T},Set{T}}}
-    ) where T
-        @assert length(unique(vars)) == length(vars)
-        var_index = Dict{T, Int}(var => i for (i, var) in enumerate(vars))
-        @assert all(e ⊆ vars for e in edges)
-        edges = map(edge -> Set{T}(edge), edges)
-        @assert all(reduce(union!, edges; init = Set{T}()) == Set{T}(vars))
-        return new{T}(vars, edges, var_index)
-    end
+function Hypergraph(
+    vars::Vector{T},
+    edges::Vector{<:Union{Vector{T},Set{T}}}
+) where T
+    @assert length(unique(vars)) == length(vars)
+    var_index = Dict{T, Int}(var => i for (i, var) in enumerate(vars))
+    @assert all(e ⊆ vars for e in edges)
+    edges = map(edge -> Set{T}(edge), edges)
+    @assert all(reduce(union!, edges; init = Set{T}()) == Set{T}(vars))
+    return Hypergraph{T}(vars, edges, var_index)
 end
 
 # Copy a hypergraph
 function Base.copy(H::Hypergraph{T}) where T
-    return Hypergraph(
+    return Hypergraph{T}(
         copy(H.vars),
-        [copy(E) for E in H.edges]
+        [copy(E) for E in H.edges],
+        copy(H.var_index)
     )
+end
+
+function ∂(H::Hypergraph{T}, X::Set{T})::Vector{Set{T}} where T
+    return filter(E -> !isempty(E ∩ X), H.edges)
+end
+
+function U(H::Hypergraph{T}, X::Set{T})::Set{T} where T
+    return reduce(union!, ∂(H, X); init = Set{T}())
+end
+
+function N(H::Hypergraph{T}, X::Set{T})::Set{T} where T
+    return setdiff(U(H, X), X)
+end
+
+function eliminate!(H::Hypergraph{T}, X::Set{T})::Hypergraph{T} where T
+    setdiff!(H.vars, X)
+    filter!(E -> isempty(E ∩ X), H.edges)
+    push!(H.edges, N(H, X))
+    return H
 end
 
 """
@@ -332,8 +352,8 @@ function MM(
 end
 
 function eliminate_variable(H::Hypergraph{T}, x::T, ω::Number) where T
-    Nx = [E for E ∈ H.edges if x ∈ E]
-    Px = [E for E ∈ H.edges if x ∉ E]
+    Nx = [copy(E) for E ∈ H.edges if x ∈ E]
+    Px = [copy(E) for E ∈ H.edges if x ∉ E]
     U = reduce(union!, Nx; init = Set{T}())
     P = copy(U)
     for E ∈ Px
@@ -362,10 +382,8 @@ function eliminate_variable(H::Hypergraph{T}, x::T, ω::Number) where T
         end
         expr = simplify(Min(args))
     end
-    new_vars = setdiff(H.vars, P)
-    new_edges = [[setdiff(E, P) for E ∈ Px]; setdiff(U, P)]
-    filter(E -> !isempty(E), new_edges)
-    new_H = Hypergraph(new_vars, new_edges)
+    new_H = copy(H)
+    eliminate!(new_H, Set{T}((x,)))
     return new_H, expr
 end
 
