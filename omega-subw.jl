@@ -227,11 +227,24 @@ function _distribute(m::Union{Min{T},Max{T}}) where T
     return m
 end
 
-function distribute(m::Term{T}) where T
+function distribute(m::Term)
+    return bottomup(m, _distribute)
+end
+
+function bottomup(m::Term{T}, rewrite::Function) where T
     if m isa Min || m isa Max
-        new_args = [distribute(arg) for arg ∈ m.args]
+        new_args = [bottomup(arg, rewrite) for arg ∈ m.args]
         m = m isa Min ? Min(new_args) : Max(new_args)
-        return _distribute(m)
+        return rewrite(m)
+    end
+    return m
+end
+
+function topdown(m::Term{T}, rewrite::Function) where T
+    if m isa Min || m isa Max
+        m = rewrite(m)
+        new_args = [topdown(arg, rewrite) for arg ∈ m.args]
+        m = m isa Min ? Min(new_args) : Max(new_args)
     end
     return m
 end
@@ -290,17 +303,19 @@ function _minimal_args(args::Vector{<:Term{T}}; subsumed_by::Function = _min_sub
     return new_args
 end
 
-function remove_subsumed_args(m::Min{T}) where T
+function _remove_subsumed_args(m::Min{T}) where T
     new_args = _minimal_args(collect(m.args); subsumed_by = _min_subsumed_by)
     return Min(new_args)
 end
 
-function remove_subsumed_args(m::Max{T}) where T
+function _remove_subsumed_args(m::Max{T}) where T
     new_args = _minimal_args(collect(m.args); subsumed_by = _max_subsumed_by)
     return Max(new_args)
 end
 
-remove_subsumed_args(t::Term) = t
+function remove_subsumed_args(m::Term)
+    return bottomup(m, _remove_subsumed_args)
+end
 
 #-------------------------------------------------------------------------------------------
 
@@ -556,6 +571,8 @@ end
 function omega_submodular_width(H::Hypergraph{T}, ω::Number; verbose::Bool = true) where T
     expr = min_elimination_cost(H, ω, verbose)
     println(expr)
+    expr = remove_subsumed_args(expr)
+    println(expr)
     expr = distribute(expr)
     @assert expr isa Max
     width = 0.0
@@ -588,14 +605,14 @@ end
 # test1()
 
 function test2()
+    ω = 2.5
     H = Hypergraph(
         ["A", "B", "C"],
         [["A", "B"], ["B", "C"], ["A", "C"]]
     )
-    X = ["A"]
-    ω = 2.5
-    t = min_U_EMM(H, Set(X), ω, true)
-    println(t)
+    # X = ["A"]
+    # t = min_U_EMM(H, Set(X), ω, true)
+    # println(t)
     w = omega_submodular_width(H, ω; verbose = true)
     println(w)
     println(2 * ω / (ω + 1))
@@ -604,14 +621,14 @@ end
 # test2()
 
 function test3()
+    ω = 2.5
     H = Hypergraph(
         ["A", "B", "C", "D"],
         [["A", "B"], ["A", "C"], ["A", "D"], ["B", "C"], ["B", "D"], ["C", "D"]]
     )
-    X = ["A"]
-    ω = 2.5
-    t = min_U_EMM(H, Set(X), ω, true)
-    println(t)
+    # X = ["A"]
+    # t = min_U_EMM(H, Set(X), ω, true)
+    # println(t)
     w = omega_submodular_width(H, ω; verbose = true)
     println(w)
     println((ω + 1)/2)
