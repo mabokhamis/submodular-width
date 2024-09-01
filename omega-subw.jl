@@ -67,9 +67,10 @@ function N(H::Hypergraph{T}, X::Set{T})::Set{T} where T
 end
 
 function eliminate!(H::Hypergraph{T}, X::Set{T})::Hypergraph{T} where T
-    setdiff!(H.vars, X)
+    new_E = N(H, X)
     filter!(E -> isempty(E ∩ X), H.edges)
-    push!(H.edges, N(H, X))
+    push!(H.edges, new_E)
+    setdiff!(H.vars, X)
     return H
 end
 
@@ -598,7 +599,7 @@ function test2()
     println(e)
 end
 
-test2()
+# test2()
 
 function test3()
     H = Hypergraph(
@@ -613,7 +614,7 @@ function test3()
     println(e)
 end
 
-# test3()
+test3()
 
 #-------------------------------------------------------------------------------------------
 
