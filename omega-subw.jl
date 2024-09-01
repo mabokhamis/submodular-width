@@ -407,12 +407,15 @@ function MM(
 end
 
 function min_U_EMM(H::Hypergraph{T}, X::Set{T}, ω::Number, verbose::Bool = false) where T
+    isempty(X) && return nothing
+
     ∂_X = ∂(H, X)
     U_X = U(H, X)
     any(E == U_X for E ∈ ∂_X) && return nothing
 
     args = Vector{Term{T}}()
     push!(args, Sum(Dict(U_X => Constant(1.0, "1"))))
+    comb = Set{Tuple{Set{T},Set{T},Set{T}}}()
     k = length(∂_X)
     for AA ∈ powerset(collect(1:k))
         (isempty(AA) || length(AA) == k) && continue
@@ -433,6 +436,9 @@ function min_U_EMM(H::Hypergraph{T}, X::Set{T}, ω::Number, verbose::Bool = fals
                 isempty(Y) && continue
                 Z = setdiff(B_diff_A, G)
                 isempty(Z) && continue
+                (Y, Z, G) ∈ comb && continue
+                (Z, Y, G) ∈ comb && continue
+                push!(comb, (Y, Z, G))
                 arg = MM(X, Y, Z, G, ω, verbose)
                 push!(args, arg)
             end
@@ -441,57 +447,25 @@ function min_U_EMM(H::Hypergraph{T}, X::Set{T}, ω::Number, verbose::Bool = fals
     return Min(args)
 end
 
-function eliminate_variable(H::Hypergraph{T}, x::T, ω::Number) where T
-    Nx = [copy(E) for E ∈ H.edges if x ∈ E]
-    Px = [copy(E) for E ∈ H.edges if x ∉ E]
-    U = reduce(union!, Nx; init = Set{T}())
-    P = copy(U)
-    for E ∈ Px
-        setdiff!(P, E)
-    end
-    if any(E == U for E ∈ Nx)
-        expr = nothing
-    else
-        args = Vector{Term{T}}()
-        push!(args, Sum(Dict(U => Constant(1.0))))
-        k = length(Nx)
-        for t1 ∈ powerset(collect(1:k))
-            (isempty(t1) || length(t1) == k) && continue
-            for t2 ∈ powerset(t1)
-                length(t2) == length(t1) && continue
-                A = reduce(union!, Nx[i] for i ∈ t1; init = Set{T}())
-                B = reduce(union!, Nx[i] for i ∈ 1:k if i ∉ t1 || i ∈ t2; init = Set{T}())
-                Y = A ∩ B ∩ P
-                W = setdiff(A ∩ B, P)
-                X = setdiff(A, B)
-                Z = setdiff(B, A)
-                (isempty(X) || isempty(Y) || isempty(Z)) && continue
-                arg = MM(X, Y, Z, W, ω)
-                push!(args, arg)
-            end
-        end
-        expr = simplify(Min(args))
-    end
-    new_H = copy(H)
-    eliminate!(new_H, Set{T}((x,)))
-    return new_H, expr
-end
+function min_elimination_cost(H::Hypergraph{T}, ω::Number, verbose::Bool = false) where T
+    isempty(H.vars) && return nothing
 
-function eliminate_variables(H::Hypergraph{T}, ω::Number) where T
-    min_args = Vector{Term{T}}()
-    VOs = permutations(H.vars)
-    for π ∈ VOs
-        new_H = Base.copy(H)
-        max_args = Vector{Term{T}}()
-        for x ∈ π
-            x ∈ new_H.vars || continue
-            (new_H, expr) = eliminate_variable(new_H, x, ω)
-            !isnothing(expr) && push!(max_args, expr)
+    args = Vector{Term{T}}()
+    for X ∈ powerset(H.vars)
+        isempty(X) && continue
+        expr1 = min_U_EMM(H, Set(X), ω, verbose)
+        H2 = copy(H)
+        eliminate!(H2, Set(X))
+        expr2 = min_elimination_cost(H2, ω, verbose)
+        arg = if isnothing(expr1) || isnothing(expr2)
+            isnothing(expr1) ? expr2 : expr1
+        else
+            Max([expr1, expr2])
         end
-        arg = Max(max_args)
-        push!(min_args, arg)
+        isnothing(arg) && return nothing
+        push!(args, arg)
     end
-    return simplify(Min(min_args))
+    return Min(args)
 end
 
 #-------------------------------------------------------------------------------------------
@@ -620,6 +594,8 @@ function test2()
     ω = 2.5
     t = min_U_EMM(H, Set(X), ω, true)
     println(t)
+    e = min_elimination_cost(H, ω, true)
+    println(e)
 end
 
 test2()
@@ -633,6 +609,8 @@ function test3()
     ω = 2.5
     t = min_U_EMM(H, Set(X), ω, true)
     println(t)
+    e = min_elimination_cost(H, ω, true)
+    println(e)
 end
 
 # test3()
