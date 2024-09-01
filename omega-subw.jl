@@ -148,26 +148,6 @@ abstract type Term{T} end
     end
 end
 
-function coefficient(sum::Sum{T}, x::Set{T}) where T
-    return  haskey(sum.args, x) ? sum.args[x].value : 0.0
-end
-
-function Base.:(+)(a::Sum{T}, b::Sum{T}) where T
-    args = Dict{Set{T}, Constant}()
-    for x ∈ keys(a.args) ∪ keys(b.args)
-        args[x] = Constant(coefficient(a, x) + coefficient(b, x))
-    end
-    return Sum(args)
-end
-
-function Base.:(-)(a::Sum{T}, b::Sum{T}) where T
-    args = Dict{Set{T}, Constant}()
-    for x ∈ keys(a.args) ∪ keys(b.args)
-        args[x] = Constant(coefficient(a, x) - coefficient(b, x))
-    end
-    return Sum(args)
-end
-
 @auto_hash_equals struct Min{T} <: Term{T}
     args::Set{Term{T}}
 
@@ -221,8 +201,53 @@ function Base.show(io::IO, t::Term)
     pretty_print(io, t)
 end
 
-_same_type(x::T, y::T) where T = true
-_same_type(x, y) = false
+function _distribute(m::Union{Min{T},Max{T}}) where T
+    if m isa Min && any(arg isa Max for arg ∈ m.args)
+        new_args = Vector{Vector{Term{T}}}()
+        num_args = 1
+        args = collect(m.args)
+        for arg ∈ args
+            if arg isa Max
+                push!(new_args, collect(arg.args))
+                num_args *= length(arg.args)
+            else
+                push!(new_args, [arg])
+            end
+        end
+        num_args >= 15 && println("Begin _distribute $num_args")
+        selectors = Iterators.product(new_args...,)
+        new_args = Vector{Term{T}}()
+        for β ∈ selectors
+            push!(new_args, Min(collect(β)))
+        end
+        num_args >= 15 && println("End _distribute $num_args")
+        return Max(new_args)
+    end
+    return m
+end
+
+function distribute(m::Term{T}) where T
+    if m isa Min || m isa Max
+        new_args = [distribute(arg) for arg ∈ m.args]
+        m = m isa Min ? Min(new_args) : Max(new_args)
+        return _distribute(m)
+    end
+    return m
+end
+
+#-------------------------------------------------------------------------------------------
+
+function coefficient(sum::Sum{T}, x::Set{T}) where T
+    return  haskey(sum.args, x) ? sum.args[x].value : 0.0
+end
+
+function Base.:(-)(a::Sum{T}, b::Sum{T}) where T
+    args = Dict{Set{T}, Constant}()
+    for x ∈ keys(a.args) ∪ keys(b.args)
+        args[x] = Constant(coefficient(a, x) - coefficient(b, x))
+    end
+    return Sum(args)
+end
 
 function Base.:(<=)(a::Sum, b::Sum)
     return is_non_negative(b - a)
@@ -252,8 +277,8 @@ function Base.:(<=)(a::Max, b::Max)
     return all(any(a2 <= b2 for b2 ∈ b.args) for a2 ∈ a.args)
 end
 
-_min_subsumed_by(i, a, j, b) = b <= a && (t = (a <= b); !t || t && j < i)
-_max_subsumed_by(i, a, j, b) = a <= b && (t = (b <= a); !t || t && j < i)
+_min_subsumed_by(i, a, j, b) = b <= a && (!(a <= b) || j < i)
+_max_subsumed_by(i, a, j, b) = a <= b && (!(b <= a) || j < i)
 
 function _minimal_args(args::Vector{<:Term{T}}; subsumed_by::Function = _min_subsumed_by) where {T}
     new_args = Vector{Term{T}}()
@@ -265,65 +290,76 @@ function _minimal_args(args::Vector{<:Term{T}}; subsumed_by::Function = _min_sub
 end
 
 function remove_subsumed_args(m::Min{T}) where T
-    new_args = _minimal_args(m.args; subsumed_by = _min_subsumed_by)
+    new_args = _minimal_args(collect(m.args); subsumed_by = _min_subsumed_by)
     return Min(new_args)
 end
 
 function remove_subsumed_args(m::Max{T}) where T
-    new_args = _minimal_args(m.args; subsumed_by = _max_subsumed_by)
+    new_args = _minimal_args(collect(m.args); subsumed_by = _max_subsumed_by)
     return Max(new_args)
 end
 
-_simplify(s::Sum, quick::Bool) = (false, s)
+remove_subsumed_args(t::Term) = t
 
-function _simplify(m::Union{Min{T},Max{T}}, quick::Bool) where T
+#-------------------------------------------------------------------------------------------
 
-    if (m isa Min || m isa Max) && length(m.args) <= 100
-        length(m.args) >= 15 && println("A: Start $(length(m.args))")
-        new_args = minimal_args(m.args;
-            subsumed_by = m isa Min ? _min_subsumed_by : _max_subsumed_by)
-        length(m.args) >= 15 && println("A: End $(length(new_args))")
-        if length(new_args) != length(m.args)
-            return (true, typeof(m)(new_args))
-        end
-    end
-
-    if m isa Min && any(arg isa Max for arg ∈ m.args)
-        new_args = Vector{Vector{Term{T}}}()
-        num_args = 1
-        for arg ∈ m.args
-            if arg isa Max
-                push!(new_args, arg.args)
-                num_args *= length(arg.args)
-            else
-                push!(new_args, [arg])
-            end
-        end
-        num_args >= 15 && println("B: $num_args")
-        selectors = Iterators.product(new_args...,)
-        new_args = Vector{Term{T}}()
-        for β ∈ selectors
-            push!(new_args, Min(collect(β)))
-        end
-        num_args >= 15 && println("B: End")
-        return (true, Max(new_args))
-    end
-
-    return (false, m)
+function solve(A, b)
+    model = Model(Clp.Optimizer)
+    set_optimizer_attribute(model, "LogLevel", 0)
+    @variable(model, x[1:size(A, 2)] >= 0)
+    b1 = b .- 1e-7
+    b2 = b .+ 1e-7
+    @constraint(model, A * x >= b1)
+    @constraint(model, A * x <= b2)
+    optimize!(model)
+    return termination_status(model) == MathOptInterface.OPTIMAL
 end
 
-function simplify(t::Term{T}, quick::Bool = false) where T
-    if t isa Min || t isa Max
-        new_args = [simplify(arg, quick) for arg ∈ t.args]
-        t = typeof(t)(new_args)
+function is_non_negative(sum::Sum{T}) where T
+    vars = collect(reduce(union!, keys(sum.args); init = Set{T}()))
+    var_index = Dict{T, Int}(var => i for (i, var) in enumerate(vars))
+    n = length(vars)
+    N = 2 ^ n
+
+    A = Vector{Vector{Float64}}()
+    c = zeros(N)
+    c[0 + 1] = 1.0
+    push!(A, c)
+    c = zeros(N)
+    c[0 + 1] = -1.0
+    push!(A, c)
+
+    for y = 0:n-1
+        Y = N - 1
+        X = Y & ~(1 << y)
+        c = zeros(N)
+        c[Y + 1] = 1.0
+        c[X + 1] = -1.0
+        push!(A, c)
     end
-    rewritten = false
-    b = true
-    while b
-        (b, t) = _simplify(t, quick)
-        rewritten |= b
+
+    for X = 0:N-1, y = 0:n-1, z = y+1:n-1
+        if (X & (1 << y) == 0) && (X & (1 << z) == 0)
+            Y = X | (1 << y)
+            Z = X | (1 << z)
+            W = Y | (1 << z)
+            c = zeros(N)
+            c[Y + 1] = 1.0
+            c[Z + 1] = 1.0
+            c[X + 1] = -1.0
+            c[W + 1] = -1.0
+            push!(A, c)
+        end
     end
-    return rewritten ? simplify(t, true) : t
+
+    A = hcat(A...)
+
+    b = zeros(N)
+    for (v, c) ∈ sum.args
+        b[zip(var_index, v) + 1] = c.value
+    end
+
+    return solve(A, b)
 end
 
 #-------------------------------------------------------------------------------------------
@@ -421,67 +457,6 @@ function eliminate_variables(H::Hypergraph{T}, ω::Number) where T
         push!(min_args, arg)
     end
     return simplify(Min(min_args))
-end
-
-#-------------------------------------------------------------------------------------------
-
-function solve(A, b)
-    model = Model(Clp.Optimizer)
-    set_optimizer_attribute(model, "LogLevel", 0)
-    @variable(model, x[1:size(A, 2)] >= 0)
-    b1 = b .- 1e-7
-    b2 = b .+ 1e-7
-    @constraint(model, A * x >= b1)
-    @constraint(model, A * x <= b2)
-    optimize!(model)
-    return termination_status(model) == MathOptInterface.OPTIMAL
-end
-
-function is_non_negative(sum::Sum{T}) where T
-    vars = collect(reduce(union!, keys(sum.args); init = Set{T}()))
-    var_index = Dict{T, Int}(var => i for (i, var) in enumerate(vars))
-    n = length(vars)
-    N = 2 ^ n
-
-    A = Vector{Vector{Float64}}()
-    c = zeros(N)
-    c[0 + 1] = 1.0
-    push!(A, c)
-    c = zeros(N)
-    c[0 + 1] = -1.0
-    push!(A, c)
-
-    for y = 0:n-1
-        Y = N - 1
-        X = Y & ~(1 << y)
-        c = zeros(N)
-        c[Y + 1] = 1.0
-        c[X + 1] = -1.0
-        push!(A, c)
-    end
-
-    for X = 0:N-1, y = 0:n-1, z = y+1:n-1
-        if (X & (1 << y) == 0) && (X & (1 << z) == 0)
-            Y = X | (1 << y)
-            Z = X | (1 << z)
-            W = Y | (1 << z)
-            c = zeros(N)
-            c[Y + 1] = 1.0
-            c[Z + 1] = 1.0
-            c[X + 1] = -1.0
-            c[W + 1] = -1.0
-            push!(A, c)
-        end
-    end
-
-    A = hcat(A...)
-
-    b = zeros(N)
-    for (v, c) ∈ sum.args
-        b[zip(var_index, v) + 1] = c.value
-    end
-
-    return solve(A, b)
 end
 
 #-------------------------------------------------------------------------------------------
@@ -589,7 +564,13 @@ function test()
         MM(["X"], ["Y"], ["Z"], ["W"], ω),
         MM(["Y"], ["Z"], ["X"], ["W"], ω),
         MM(["Z"], ["X"], ["Y"], ["W"], ω),
+        MM(["Z", "T"], ["X"], ["Y"], ["W"], ω),
+        MM(["T"], ["X"], ["Y"], ["W"], ω),
     ])
+    println(t)
+    t = remove_subsumed_args(t)
+    println(t)
+    t = distribute(t)
     println(t)
 end
 
