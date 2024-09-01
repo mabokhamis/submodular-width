@@ -249,6 +249,21 @@ function topdown(m::Term{T}, rewrite::Function) where T
     return m
 end
 
+function _distribute_and_simplify(m::Union{Min{T},Max{T}}) where T
+    m = _distribute(m)
+    num_args = length(m.args)
+    if num_args <= 50
+        num_args >= 10 && println("Begin _remove_subsumed_args $num_args")
+        m = _remove_subsumed_args(m)
+        num_args >= 10 && println("End _remove_subsumed_args $num_args")
+    end
+    return m
+end
+
+function distribute_and_simplify(m::Term)
+    return bottomup(m, _distribute_and_simplify)
+end
+
 #-------------------------------------------------------------------------------------------
 
 function coefficient(sum::Sum{T}, x::Set{T}) where T
