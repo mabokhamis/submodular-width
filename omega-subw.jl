@@ -554,14 +554,15 @@ function omega_submodular_width(H::Hypergraph{T}, m::Min{T}; verbose::Bool = tru
 end
 
 function omega_submodular_width(H::Hypergraph{T}, ω::Number; verbose::Bool = true) where T
-    expr = eliminate_variables(H, ω)
-    # println(expr)
+    expr = min_elimination_cost(H, ω, verbose)
+    println(expr)
+    expr = distribute(expr)
     @assert expr isa Max
     width = 0.0
     for (i, arg) ∈ enumerate(expr.args)
         (i%10 == 1) && println("C: $i of $(length(expr.args))")
         @assert arg isa Min
-        width = max(width, omega_submodular_width(H, arg; verbose = verbose))
+        width = max(width, omega_submodular_width(H, arg; verbose = false))
     end
     return width
 end
@@ -595,8 +596,9 @@ function test2()
     ω = 2.5
     t = min_U_EMM(H, Set(X), ω, true)
     println(t)
-    e = min_elimination_cost(H, ω, true)
-    println(e)
+    w = omega_submodular_width(H, ω; verbose = true)
+    println(w)
+    println(2 * ω / (ω + 1))
 end
 
 # test2()
@@ -610,11 +612,12 @@ function test3()
     ω = 2.5
     t = min_U_EMM(H, Set(X), ω, true)
     println(t)
-    e = min_elimination_cost(H, ω, true)
-    println(e)
+    w = omega_submodular_width(H, ω; verbose = true)
+    println(w)
+    println((ω + 1)/2)
 end
 
-test3()
+# test3()
 
 #-------------------------------------------------------------------------------------------
 
