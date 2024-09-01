@@ -420,15 +420,18 @@ function min_U_EMM(H::Hypergraph{T}, X::Set{T}, ω::Number, verbose::Bool = fals
             length(AB) == length(AA) && continue
             A = reduce(union!, ∂_X[i] for i ∈ AA; init = Set{T}())
             B = reduce(union!, ∂_X[i] for i ∈ 1:k if i ∉ AA || i ∈ AB; init = Set{T}())
-            X ⊆ A ∩ B || continue
-            !isempty(setdiff(A, B)) || continue
-            !isempty(setdiff(B, A)) || continue
-            G1 = setdiff(A ∩ B, X)
-            for G2 ∈ powerset(collect(setdiff(A ∪ B, A ∩ B)))
+            A_cap_B = A ∩ B
+            X ⊆ A_cap_B || continue
+            A_diff_B = setdiff(A, B)
+            isempty(A_diff_B) && continue
+            B_diff_A = setdiff(B, A)
+            isempty(B_diff_A) && continue
+            G1 = setdiff(A_cap_B, X)
+            for G2 ∈ powerset(collect(setdiff(A ∪ B, A_cap_B)))
                 G = G1 ∪ G2
-                Y = setdiff(setdiff(A, B), G)
+                Y = setdiff(A_diff_B, G)
                 isempty(Y) && continue
-                Z = setdiff(setdiff(B, A), G)
+                Z = setdiff(B_diff_A, G)
                 isempty(Z) && continue
                 arg = MM(X, Y, Z, G, ω, verbose)
                 push!(args, arg)
@@ -619,7 +622,7 @@ function test2()
     println(t)
 end
 
-# test2()
+test2()
 
 function test3()
     H = Hypergraph(
@@ -632,7 +635,7 @@ function test3()
     println(t)
 end
 
-test3()
+# test3()
 
 #-------------------------------------------------------------------------------------------
 
