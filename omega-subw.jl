@@ -406,6 +406,38 @@ function MM(
     return MM(Set{T}(X), Set{T}(Y), Set{T}(Z), Set{T}(G), ω, verbose)
 end
 
+function min_U_EMM(H::Hypergraph{T}, X::Set{T}, ω::Number, verbose::Bool = false) where T
+    ∂_X = ∂(H, X)
+    U_X = U(H, X)
+    any(E == U_X for E ∈ ∂_X) && return nothing
+
+    args = Vector{Term{T}}()
+    push!(args, Sum(Dict(U_X => Constant(1.0, "1"))))
+    k = length(∂_X)
+    for AA ∈ powerset(collect(1:k))
+        (isempty(AA) || length(AA) == k) && continue
+        for AB ∈ powerset(AA)
+            length(AB) == length(AA) && continue
+            A = reduce(union!, ∂_X[i] for i ∈ AA; init = Set{T}())
+            B = reduce(union!, ∂_X[i] for i ∈ 1:k if i ∉ AA || i ∈ AB; init = Set{T}())
+            X ⊆ A ∩ B || continue
+            !isempty(setdiff(A, B)) || continue
+            !isempty(setdiff(B, A)) || continue
+            G1 = setdiff(A ∩ B, X)
+            for G2 ∈ powerset(collect(setdiff(A ∪ B, A ∩ B)))
+                G = G1 ∪ G2
+                Y = setdiff(setdiff(A, B), G)
+                isempty(Y) && continue
+                Z = setdiff(setdiff(B, A), G)
+                isempty(Z) && continue
+                arg = MM(X, Y, Z, G, ω, verbose)
+                push!(args, arg)
+            end
+        end
+    end
+    return Min(args)
+end
+
 function eliminate_variable(H::Hypergraph{T}, x::T, ω::Number) where T
     Nx = [copy(E) for E ∈ H.edges if x ∈ E]
     Px = [copy(E) for E ∈ H.edges if x ∉ E]
@@ -558,7 +590,7 @@ end
 
 #-------------------------------------------------------------------------------------------
 
-function test()
+function test1()
     ω = 2.5
     t = Min([
         MM(["X"], ["Y"], ["Z"], ["W"], ω),
@@ -574,7 +606,33 @@ function test()
     println(t)
 end
 
-test()
+# test1()
+
+function test2()
+    H = Hypergraph(
+        ["A", "B", "C"],
+        [["A", "B"], ["B", "C"], ["A", "C"]]
+    )
+    X = ["A"]
+    ω = 2.5
+    t = min_U_EMM(H, Set(X), ω, true)
+    println(t)
+end
+
+# test2()
+
+function test3()
+    H = Hypergraph(
+        ["A", "B", "C", "D"],
+        [["A", "B"], ["A", "C"], ["A", "D"], ["B", "C"], ["B", "D"], ["C", "D"]]
+    )
+    X = ["A"]
+    ω = 2.5
+    t = min_U_EMM(H, Set(X), ω, true)
+    println(t)
+end
+
+test3()
 
 #-------------------------------------------------------------------------------------------
 
