@@ -589,11 +589,15 @@ function omega_submodular_width(H::Hypergraph{T}, ω::Number; verbose::Bool = tr
     expr = remove_subsumed_args(expr)
     println(expr)
     expr = distribute(expr)
-    @assert expr isa Max
+    if !(expr isa Max)
+        expr = Max([expr])
+    end
     width = 0.0
     for (i, arg) ∈ enumerate(expr.args)
         (i%10 == 1) && println("C: $i of $(length(expr.args))")
-        @assert arg isa Min
+        if !(arg isa Min)
+            arg = Min([arg])
+        end
         width = max(width, omega_submodular_width(H, arg; verbose = false))
     end
     return width
