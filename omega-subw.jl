@@ -603,7 +603,7 @@ function omega_submodular_width(H::Hypergraph{T}, ω::Number; verbose::Bool = tr
             arg = Min([arg])
         end
         bound, h = omega_submodular_width(H, arg; verbose = false)
-        bound2 = eval(expr0, h)
+        bound2 = eval(arg, h)
         @assert abs(bound - bound2) < 1e-8
         if bound > width
             width = bound
@@ -842,15 +842,26 @@ for ω = 2.0
 
 #-----------------------------------------------
 
+# H = Hypergraph(
+#     ["Y", "X1", "X2", "X3"],
+#     [["X1", "Y"], ["X2", "Y"], ["X3", "Y"], ["X1", "X2", "X3"]]
+# )
+
+# ω = 2
+# w = omega_submodular_width(H, ω; verbose = false)
+# println(w)
+# println(2 - 1/ω)
+
+#-----------------------------------------------
+
 H = Hypergraph(
-    ["Y", "X1", "X2", "X3"],
-    [["X1", "Y"], ["X2", "Y"], ["X3", "Y"], ["X1", "X2", "X3"]]
+    ["A", "B", "C", "D"],
+    [["A", "B"], ["B", "C"], ["C", "D"], ["D", "A"]]
 )
 
 ω = 2
 w = omega_submodular_width(H, ω; verbose = false)
 println(w)
-println(2 - 1/ω)
 
 #-----------------------------------------------
 
