@@ -574,33 +574,70 @@ function omega_submodular_width(H::Hypergraph{T}, m::Min{T}; verbose::Bool = tru
 
     obj = objective_value(model)
 
+    polymatroid = Dict{Set{T}, Float64}()
     verbose && println("\nOptimal Primal Solution:")
     sol = value.(h)
     for i = 0:N-1
+        polymatroid[unzip(H, i)] = sol[i]
         verbose && println("$(f(i)) = $(sol[i])")
     end
 
-    return obj
+    return (obj, polymatroid)
 end
 
 function omega_submodular_width(H::Hypergraph{T}, ω::Number; verbose::Bool = true) where T
     expr = min_elimination_cost(H, ω, verbose)
-    println(expr)
-    expr = remove_subsumed_args(expr)
+    expr0 = expr
+    # println(expr)
+    # expr = remove_subsumed_args(expr)
     println(expr)
     expr = distribute(expr)
     if !(expr isa Max)
         expr = Max([expr])
     end
     width = 0.0
+    witness = nothing
     for (i, arg) ∈ enumerate(expr.args)
         (i%10 == 1) && println("C: $i of $(length(expr.args))")
         if !(arg isa Min)
             arg = Min([arg])
         end
-        width = max(width, omega_submodular_width(H, arg; verbose = false))
+        bound, h = omega_submodular_width(H, arg; verbose = false)
+        bound2 = eval(expr0, h)
+        @assert abs(bound - bound2) < 1e-8
+        if bound > width
+            width = bound
+            witness = h
+        end
     end
+    println(witness)
     return width
+end
+
+#-------------------------------------------------------------------------------------------
+
+function eval(c::Constant, h::Dict{Set{T}, Float64}) where T
+    return c.value
+end
+
+function eval(s::Sum{T}, h::Dict{Set{T}, Float64}) where T
+    return sum(c.value * h[x] for (x, c) ∈ s.args; init = 0.0)
+end
+
+function eval(m::Min{T}, h::Dict{Set{T}, Float64}) where T
+    return minimum(eval(arg, h) for arg ∈ m.args; init = Inf)
+end
+
+function eval(m::Max{T}, h::Dict{Set{T}, Float64}) where T
+    return maximum(eval(arg, h) for arg ∈ m.args; init = -Inf)
+end
+
+function Base.show(io::IO, h::Dict{Set{T}, Float64}) where T
+    v = [(x, v) for (x, v) ∈ h]
+    sort!(v, by = x -> (length(x[1]), name(x[1])))
+    for (x, v) ∈ v
+        println(io, "$(name(x)) = $v")
+    end
 end
 
 #-------------------------------------------------------------------------------------------
@@ -797,6 +834,29 @@ for ω = 2.0
 # H = Hypergraph(
 #     ["A1", "A2", "B1", "B2", "C1", "C2"],
 #     [["A1", "A2", "B1", "B2"], ["B1", "B2", "C1", "C2"], ["A1", "A2", "C1", "C2"]];
+# )
+
+# ω = 2
+# w = omega_submodular_width(H, ω; verbose = false)
+# println(w)
+
+#-----------------------------------------------
+
+H = Hypergraph(
+    ["Y", "X1", "X2", "X3"],
+    [["X1", "Y"], ["X2", "Y"], ["X3", "Y"], ["X1", "X2", "X3"]]
+)
+
+ω = 2
+w = omega_submodular_width(H, ω; verbose = false)
+println(w)
+println(2 - 1/ω)
+
+#-----------------------------------------------
+
+# H = Hypergraph(
+#     ["Y", "X1", "X2", "X3", "X4"],
+#     [["X1", "Y"], ["X2", "Y"], ["X3", "Y"], ["X4", "Y"], ["X1", "X2", "X3", "X4"]]
 # )
 
 # ω = 2
