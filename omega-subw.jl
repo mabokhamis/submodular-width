@@ -963,29 +963,31 @@ function lower_bound_triangle_tree(k::Int, ω::Number, ϵ::Number = 1e-12, verbo
     @constraint(model, -ϵ ≤ h[XsY] - 1.0 - Δ ≤ ϵ)
     @constraint(model, -ϵ ≤ h[Xs] - 1.0 ≤ ϵ)
 
-    A_size = Int(floor((k-1)/2))
-
-    for i in 1:k
-        X1 = "X$i"
-        others = ["X$j" for j in 1:k if j != i]
-        for A in combinations(others, A_size)
-            B = setdiff(others, A)
-            AX1 = [A; X1]
-            BX1 = [B; X1]
-
-            @constraint(model, -ϵ ≤ h[zip(H, A)] - sum(h[zip(H, [Xi])] for Xi in A) ≤ ϵ)
-            @constraint(model, -ϵ ≤ h[zip(H, B)] - sum(h[zip(H, [Xi])] for Xi in B) ≤ ϵ)
-            @constraint(model, -ϵ ≤ h[zip(H, A)] - h[zip(H, AX1)] + h[zip(H, [X1])] ≤ ϵ)
-            @constraint(model, -ϵ ≤ h[zip(H, B)] - h[zip(H, BX1)] + h[zip(H, [X1])] ≤ ϵ)
-            @constraint(model,
-                -ϵ ≤ (ω - 2) * h[zip(H, A)] + h[zip(H, B)] + h[zip(H, [X1, "Y"])] - 1.0 - Δ ≤ ϵ)
-        end
+    for Z in combinations(["X$i" for i in 1:k], k - 1)
+        @constraint(model, -ϵ ≤ h[zip(H, Z)] - sum(h[zip(H, [Xi])] for Xi in Z) ≤ ϵ)
     end
+
+    # A_size = Int(floor((k-1)/2))
+
+    # for i in 1:k
+    #     X1 = "X$i"
+    #     others = ["X$j" for j in 1:k if j != i]
+    #     for A in combinations(others, A_size)
+    #         B = setdiff(others, A)
+    #         AX1 = [A; X1]
+    #         BX1 = [B; X1]
+
+    #         @constraint(model, -ϵ ≤ h[zip(H, AX1)] - sum(h[zip(H, [Xi])] for Xi in AX1) ≤ ϵ)
+    #         @constraint(model, -ϵ ≤ h[zip(H, BX1)] - sum(h[zip(H, [Xi])] for Xi in BX1) ≤ ϵ)
+    #         # @constraint(model, -ϵ ≤ h[zip(H, A)] - h[zip(H, AX1)] + h[zip(H, [X1])] ≤ ϵ)
+    #         # @constraint(model, -ϵ ≤ h[zip(H, B)] - h[zip(H, BX1)] + h[zip(H, [X1])] ≤ ϵ)
+    #         @constraint(model,
+    #             -ϵ ≤ (ω - 2) * h[zip(H, A)] + h[zip(H, B)] + h[zip(H, [X1, "Y"])] - 1.0 - Δ ≤ ϵ)
+    #     end
+    # end
 
     optimize!(model)
     @assert termination_status(model) == MathOptInterface.OPTIMAL
-
-    obj = objective_value(model)
 
     polymatroid = Dict{Set{String}, Float64}()
     verbose && println("\nOptimal Primal Solution:")
@@ -996,16 +998,24 @@ function lower_bound_triangle_tree(k::Int, ω::Number, ϵ::Number = 1e-12, verbo
     end
     println(polymatroid)
     expr = min_elimination_cost(H, ω, verbose)
-    # println(expr)
+    println(expr)
     v = eval(expr, polymatroid)
+    for arg in expr.args
+        v2 = eval(arg, polymatroid)
+        if abs(v - v2) < 1e-6
+            println()
+            println(arg)
+            println()
+        end
+    end
     @assert abs(1 + Δ - v) < 1e-6 """
      - 1+Δ: $(1 + Δ)
      - v: $v
     """
 
-    return (obj, polymatroid)
+    return polymatroid
 end
 
-lower_bound_triangle_tree(3, 2)
+lower_bound_triangle_tree(4, 2.5)
 
 end
