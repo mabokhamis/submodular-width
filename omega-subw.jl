@@ -854,14 +854,25 @@ for ω = 2.0
 
 #-----------------------------------------------
 
-H = Hypergraph(
-    ["A", "B", "C", "D"],
-    [["A", "B"], ["B", "C"], ["C", "D"], ["D", "A"]]
-)
+# H = Hypergraph(
+#     ["A", "B", "C", "D"],
+#     [["A", "B"], ["B", "C"], ["C", "D"], ["D", "A"]]
+# )
 
-ω = 2
-w = omega_submodular_width(H, ω; verbose = false)
-println(w)
+# ω = 2
+# w = omega_submodular_width(H, ω; verbose = false)
+# println(w)
+
+#-----------------------------------------------
+
+# H = Hypergraph(
+#     ["A", "B", "C", "D", "E"],
+#     [["A", "B"], ["B", "C"], ["C", "D"], ["D", "E"], ["E", "A"]]
+# )
+
+# ω = 2
+# w = omega_submodular_width(H, ω; verbose = false)
+# println(w)
 
 #-----------------------------------------------
 
@@ -873,5 +884,128 @@ println(w)
 # ω = 2
 # w = omega_submodular_width(H, ω; verbose = false)
 # println(w)
+
+#-------------------------------------------------------------------------------------------
+
+function lower_bound_triangle_tree(k::Int, ω::Number, ϵ::Number = 1e-12, verbose::Bool = false)
+    vars = ["Y"; ["X$i" for i in 1:k]]
+    @show(vars)
+    edges = [["X$i", "Y"] for i in 1:k]
+    push!(edges, ["X$i" for i in 1:k])
+
+    H = Hypergraph(vars, edges)
+
+    n = length(H.vars)
+    N = 2 ^ n
+
+    f(z::Int) = name(unzip(H, z))
+
+    # initialize a linear program (LP)
+    model = Model(Clp.Optimizer)
+    set_optimizer_attribute(model, "LogLevel", 0)
+
+    # Let `V` be the set of vertices of `H`. For each subset `U ⊆ V`, the LP contains a
+    # corresponding variable `h[U]`
+    @variable(model, h[0:N-1])
+
+    # The LP contains the constraint `h[∅] = 0`
+    verbose && println("\nZero Constraint:")
+    @constraint(model, h[0] == 0.0)
+    verbose && println("$(f(0)) = 0.0")
+
+    # For each `X ⊆ Y ⊆ V`, the LP contains a constraint `h[X] ≤ h[Y]`. These are called
+    # "monotonicity constraints"
+    verbose && println("\n(Basic) Monotonicity Constraints:")
+    Y = N - 1
+    for y = 0:n-1
+        X = Y & ~(1 << y)
+        @constraint(model, h[Y] - h[X] ≥ 0.0)
+        verbose && println("$(f(Y)) - $(f(X)) ≥ 0.0")
+    end
+
+    # For each `Y, Z ⊆ V` where `Y` and `Z` are not contained in one another, the LP
+    # contains a constraint `h[Y] + h[Z] ≥ h[Y ∩ Z] + h[Y ∪ Z]`. These are called
+    # "submodularity constraints". (Alternatively they can formulated as follows
+    # using "conditional entropy" notation: `h[Y | Y ∩ Z] ≥ h[Y ∪ Z | Z]`.)
+    verbose && println("\n(Basic) Submodularity Constraints:")
+    for X = 0:N-1, y = 0:n-1, z = y+1:n-1
+        if (X & (1 << y) == 0) && (X & (1 << z) == 0)
+            Y = X | (1 << y)
+            Z = X | (1 << z)
+            W = Y | (1 << z)
+            @constraint(model, h[Y] + h[Z] - h[X] - h[W] ≥ 0.0)
+            verbose && println("$(f(Y)) + $(f(Z)) - $(f(X)) - $(f(W)) ≥ 0.0")
+        end
+    end
+
+    # For each hyperedge `e` in `H`, the LP contains a constraint `h[e] ≤ 1.0`. These
+    # are called "edge-domination" constraints.
+    verbose && println("\nEdge-domination Constraints:")
+    for edge in H.edges
+        E = zip(H, edge)
+        @constraint(model, h[E] ≤ 1.0)
+        verbose && println("$(f(E)) ≤ 1.0")
+    end
+
+    Xs = zip(H, ["X$i" for i in 1:k])
+    XsY = zip(H, [["X$i" for i in 1:k]; "Y"])
+
+    Δ = 1 - 1 / ((ω - 2) * floor((k - 1)/2) + ceil((k - 1)/2) + 1)
+    @show(Δ)
+    for i = 1:k
+        XiY = zip(H, ["X$i", "Y"])
+        Xi = zip(H, ["X$i"])
+        @constraint(model, -ϵ ≤ h[XiY] - h[Xi] - Δ ≤ ϵ)
+        @constraint(model, -ϵ ≤ h[XiY] - 1.0 ≤ ϵ)
+        @constraint(model, -ϵ ≤ h[XiY] - h[Xi] - h[XsY] + h[Xs] ≤ ϵ)
+    end
+
+    @constraint(model, -ϵ ≤ h[XsY] - 1.0 - Δ ≤ ϵ)
+    @constraint(model, -ϵ ≤ h[Xs] - 1.0 ≤ ϵ)
+
+    A_size = Int(floor((k-1)/2))
+
+    for i in 1:k
+        X1 = "X$i"
+        others = ["X$j" for j in 1:k if j != i]
+        for A in combinations(others, A_size)
+            B = setdiff(others, A)
+            AX1 = [A; X1]
+            BX1 = [B; X1]
+
+            @constraint(model, -ϵ ≤ h[zip(H, A)] - sum(h[zip(H, [Xi])] for Xi in A) ≤ ϵ)
+            @constraint(model, -ϵ ≤ h[zip(H, B)] - sum(h[zip(H, [Xi])] for Xi in B) ≤ ϵ)
+            @constraint(model, -ϵ ≤ h[zip(H, A)] - h[zip(H, AX1)] + h[zip(H, [X1])] ≤ ϵ)
+            @constraint(model, -ϵ ≤ h[zip(H, B)] - h[zip(H, BX1)] + h[zip(H, [X1])] ≤ ϵ)
+            @constraint(model,
+                -ϵ ≤ (ω - 2) * h[zip(H, A)] + h[zip(H, B)] + h[zip(H, [X1, "Y"])] - 1.0 - Δ ≤ ϵ)
+        end
+    end
+
+    optimize!(model)
+    @assert termination_status(model) == MathOptInterface.OPTIMAL
+
+    obj = objective_value(model)
+
+    polymatroid = Dict{Set{String}, Float64}()
+    verbose && println("\nOptimal Primal Solution:")
+    sol = value.(h)
+    for i = 0:N-1
+        polymatroid[unzip(H, i)] = sol[i]
+        # verbose && println("$(f(i)) = $(sol[i])")
+    end
+    println(polymatroid)
+    expr = min_elimination_cost(H, ω, verbose)
+    # println(expr)
+    v = eval(expr, polymatroid)
+    @assert abs(1 + Δ - v) < 1e-6 """
+     - 1+Δ: $(1 + Δ)
+     - v: $v
+    """
+
+    return (obj, polymatroid)
+end
+
+lower_bound_triangle_tree(3, 2)
 
 end
