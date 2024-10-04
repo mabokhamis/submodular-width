@@ -949,23 +949,33 @@ function lower_bound_triangle_tree(k::Int, ω::Number, ϵ::Number = 1e-12, verbo
 
     Xs = zip(H, ["X$i" for i in 1:k])
     XsY = zip(H, [["X$i" for i in 1:k]; "Y"])
+    Y = zip(H, ["Y"])
 
-    Δ = 1 - 1 / ((ω - 2) * floor((k - 1)/2) + ceil((k - 1)/2) + 1)
+    Δ = isodd(k) ?
+        1 - 1 / ((ω - 2) * floor((k - 1)/2) + ceil((k - 1)/2) + 1) :
+        1 - 1 / ((ω - 1) * (k - 1)/2 + 1)
     @show(Δ)
+
+    @constraint(model, -ϵ ≤ h[Y] - 1.0 + Δ / (k-1) ≤ ϵ)
     for i = 1:k
         XiY = zip(H, ["X$i", "Y"])
         Xi = zip(H, ["X$i"])
         @constraint(model, -ϵ ≤ h[XiY] - h[Xi] - Δ ≤ ϵ)
         @constraint(model, -ϵ ≤ h[XiY] - 1.0 ≤ ϵ)
-        @constraint(model, -ϵ ≤ h[XiY] - h[Xi] - h[XsY] + h[Xs] ≤ ϵ)
+        # @constraint(model, -ϵ ≤ h[XiY] - h[Xi] - h[XsY] + h[Xs] ≤ ϵ)
     end
 
     @constraint(model, -ϵ ≤ h[XsY] - 1.0 - Δ ≤ ϵ)
     @constraint(model, -ϵ ≤ h[Xs] - 1.0 ≤ ϵ)
 
-    for Z in combinations(["X$i" for i in 1:k], k - 1)
-        @constraint(model, -ϵ ≤ h[zip(H, Z)] - sum(h[zip(H, [Xi])] for Xi in Z) ≤ ϵ)
-    end
+    # for Z in combinations(["X$i" for i in 1:k], Int(floor(k/2)))
+    #     @constraint(model, -ϵ ≤ h[zip(H, Z)] - sum(h[zip(H, [Xi])] for Xi in Z) ≤ ϵ)
+    # end
+
+    A = ["X$i" for i in 1:Int(floor(k/2))]
+    B = ["X$i" for i in Int(floor(k/2)) + 1:k]
+    # @constraint(model, -ϵ ≤ h[zip(H, A)] - sum(h[zip(H, [Xi])] for Xi in A) ≤ ϵ)
+    # @constraint(model, -ϵ ≤ h[zip(H, B)] - sum(h[zip(H, [Xi])] for Xi in B) ≤ ϵ)
 
     # A_size = Int(floor((k-1)/2))
 
@@ -1016,6 +1026,7 @@ function lower_bound_triangle_tree(k::Int, ω::Number, ϵ::Number = 1e-12, verbo
     return polymatroid
 end
 
-lower_bound_triangle_tree(4, 2.5)
+lower_bound_triangle_tree(4, 2)
 
+a ⊕ 1 = a
 end
