@@ -1026,7 +1026,4 @@ function lower_bound_triangle_tree(k::Int, ω::Number, ϵ::Number = 1e-12, verbo
     return polymatroid
 end
 
-lower_bound_triangle_tree(4, 2)
-
-a ⊕ 1 = a
 end
