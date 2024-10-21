@@ -941,5 +941,46 @@ for ω = 2.0
 # println(h)
 
 #-----------------------------------------------
+# Xiao's 4-pyramid lowe bound polymatroid:
+
+function pyramid_4_polymatroid(ω::Number)
+    h = Dict{Set{String}, Float64}()
+    h[Set{String}()] = 0.0
+    h[Set(["Y"])] = 2 * ω / (3 * ω - 1)
+    for i = 1:4
+        h[Set(["X$i"])] = 2 / (3 * ω - 1)
+        h[Set(["X$i", "Y"])] = 1.0
+    end
+    for i = 1:4, j = 1:4
+        i == j && continue
+        h[Set(["X$i", "X$j"])] = 4 / (3 * ω - 1)
+        h[Set(["X$i", "X$j", "Y"])] = 1.0 + 2 / (3 * ω - 1)
+    end
+    for i = 1:4, j = 1:4, k = 1:4
+        i == j && continue
+        i == k && continue
+        j == k && continue
+        h[Set(["X$i", "X$j", "X$k"])] = 1.0
+        h[Set(["X$i", "X$j", "X$k", "Y"])] = 2.0 - 2 / (3 * ω - 1)
+    end
+    h[Set(["X1", "X2", "X3", "X4"])] = 1
+    h[Set(["X1", "X2", "X3", "X4", "Y"])] = 2.0 - 2 / (3 * ω - 1)
+    return h
+end
+
+H = Hypergraph(
+    ["Y", "X1", "X2", "X3", "X4"],
+    [["X1", "Y"], ["X2", "Y"], ["X3", "Y"], ["X4", "Y"], ["X1", "X2", "X3", "X4"]]
+)
+
+ω = 2.0
+
+expr = min_elimination_cost(H, ω, false)
+
+h = pyramid_4_polymatroid(ω)
+
+println(is_polymatroid(h))
+println(is_edge_dominated(h, H))
+println(eval(expr, h))
 
 end
