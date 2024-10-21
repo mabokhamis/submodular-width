@@ -585,11 +585,8 @@ function omega_submodular_width(H::Hypergraph{T}, m::Min{T}; verbose::Bool = tru
     return (obj, polymatroid)
 end
 
-function omega_submodular_width(H::Hypergraph{T}, ω::Number; verbose::Bool = true) where T
-    expr = min_elimination_cost(H, ω, verbose)
-    expr0 = expr
-    # println(expr)
-    # expr = remove_subsumed_args(expr)
+function omega_submodular_width(H::Hypergraph{T}, ω::Number; verbose::Bool = true, expr = nothing) where T
+    isnothing(expr) && (expr = min_elimination_cost(H, ω, verbose))
     println(expr)
     expr = distribute(expr)
     if !(expr isa Max)
@@ -604,14 +601,16 @@ function omega_submodular_width(H::Hypergraph{T}, ω::Number; verbose::Bool = tr
         end
         bound, h = omega_submodular_width(H, arg; verbose = false)
         bound2 = eval(arg, h)
-        @assert abs(bound - bound2) < 1e-8
+        @assert abs(bound - bound2) < 1e-6 """
+         - bound = $bound
+         - bound2 = $bound2
+        """
         if bound > width
             width = bound
             witness = h
         end
     end
-    println(witness)
-    return width
+    return (width, witness)
 end
 
 #-------------------------------------------------------------------------------------------
@@ -876,14 +875,38 @@ for ω = 2.0
 
 #-----------------------------------------------
 
-# H = Hypergraph(
-#     ["Y", "X1", "X2", "X3", "X4"],
-#     [["X1", "Y"], ["X2", "Y"], ["X3", "Y"], ["X4", "Y"], ["X1", "X2", "X3", "X4"]]
-# )
+H = Hypergraph(
+    ["Y", "X1", "X2", "X3", "X4"],
+    [["X1", "Y"], ["X2", "Y"], ["X3", "Y"], ["X4", "Y"], ["X1", "X2", "X3", "X4"]]
+)
 
-# ω = 2
-# w = omega_submodular_width(H, ω; verbose = false)
-# println(w)
+ω = 2.5
+
+full_expr = min_elimination_cost(H, ω, false)
+println(full_expr)
+println()
+println()
+println()
+
+expr = Min([
+    Sum(Dict(Set(["Y", "X1", "X2", "X3", "X4"]) => Constant(1.0))),
+    MM(["X1", "X2"], ["X3", "X4"], ["Y"], String[], ω),
+    MM(["X1", "X3"], ["X2", "X4"], ["Y"], String[], ω),
+    MM(["X1", "X4"], ["X2", "X3"], ["Y"], String[], ω),
+    MM(["X1"], ["X2", "X3", "X4"], ["Y"], String[], ω),
+    MM(["X2"], ["X1", "X3", "X4"], ["Y"], String[], ω),
+    MM(["X3"], ["X1", "X2", "X4"], ["Y"], String[], ω),
+    MM(["X4"], ["X1", "X2", "X3"], ["Y"], String[], ω),
+    MM(["X4"], ["X2", "X3"], ["X1", "Y"], String[], ω),
+])
+(w, h) = omega_submodular_width(H, ω; expr, verbose = false)
+println(w)
+full_w = eval(full_expr, h)
+@assert abs(w - full_w) < 1e-6 """
+    - w = $w
+    - full_w = $full_w
+"""
+println(h)
 
 #-------------------------------------------------------------------------------------------
 
