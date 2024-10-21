@@ -652,7 +652,7 @@ function is_polymatroid(h::Dict{Set{T}, Float64}, ϵ::Number = 1e-12) where T
             B = Set(X) ∪ Set((z,))
             AnB = Set(X)
             AoB = Set(X) ∪ Set((y, z))
-            h[A] + h[B] - h[AnB] - h[AoB] ≥ -epsilon || return false
+            h[A] + h[B] - h[AnB] - h[AoB] ≥ -ϵ || return false
         end
     end
     for x ∈ V
@@ -698,9 +698,11 @@ function test2()
     # X = ["A"]
     # t = min_U_EMM(H, Set(X), ω, true)
     # println(t)
-    w = omega_submodular_width(H, ω; verbose = true)
+    (w, h) = omega_submodular_width(H, ω; verbose = true)
     println(w)
     println(2 * ω / (ω + 1))
+    println(is_polymatroid(h))
+    println(is_edge_dominated(h, H))
 end
 
 # test2()
@@ -905,38 +907,38 @@ for ω = 2.0
 
 #-----------------------------------------------
 
-H = Hypergraph(
-    ["Y", "X1", "X2", "X3", "X4"],
-    [["X1", "Y"], ["X2", "Y"], ["X3", "Y"], ["X4", "Y"], ["X1", "X2", "X3", "X4"]]
-)
+# H = Hypergraph(
+#     ["Y", "X1", "X2", "X3", "X4"],
+#     [["X1", "Y"], ["X2", "Y"], ["X3", "Y"], ["X4", "Y"], ["X1", "X2", "X3", "X4"]]
+# )
 
-ω = 2.5
+# ω = 2.5
 
-full_expr = min_elimination_cost(H, ω, false)
-println(full_expr)
-println()
-println()
-println()
+# full_expr = min_elimination_cost(H, ω, false)
+# println(full_expr)
+# println()
+# println()
+# println()
 
-expr = Min([
-    Sum(Dict(Set(["Y", "X1", "X2", "X3", "X4"]) => Constant(1.0))),
-    MM(["X1", "X2"], ["X3", "X4"], ["Y"], String[], ω),
-    MM(["X1", "X3"], ["X2", "X4"], ["Y"], String[], ω),
-    MM(["X1", "X4"], ["X2", "X3"], ["Y"], String[], ω),
-    MM(["X1"], ["X2", "X3", "X4"], ["Y"], String[], ω),
-    MM(["X2"], ["X1", "X3", "X4"], ["Y"], String[], ω),
-    MM(["X3"], ["X1", "X2", "X4"], ["Y"], String[], ω),
-    MM(["X4"], ["X1", "X2", "X3"], ["Y"], String[], ω),
-    MM(["X4"], ["X2", "X3"], ["X1", "Y"], String[], ω),
-])
-(w, h) = omega_submodular_width(H, ω; expr, verbose = false)
-println(w)
-full_w = eval(full_expr, h)
-@assert abs(w - full_w) < 1e-6 """
-    - w = $w
-    - full_w = $full_w
-"""
-println(h)
+# expr = Min([
+#     Sum(Dict(Set(["Y", "X1", "X2", "X3", "X4"]) => Constant(1.0))),
+#     MM(["X1", "X2"], ["X3", "X4"], ["Y"], String[], ω),
+#     MM(["X1", "X3"], ["X2", "X4"], ["Y"], String[], ω),
+#     MM(["X1", "X4"], ["X2", "X3"], ["Y"], String[], ω),
+#     MM(["X1"], ["X2", "X3", "X4"], ["Y"], String[], ω),
+#     MM(["X2"], ["X1", "X3", "X4"], ["Y"], String[], ω),
+#     MM(["X3"], ["X1", "X2", "X4"], ["Y"], String[], ω),
+#     MM(["X4"], ["X1", "X2", "X3"], ["Y"], String[], ω),
+#     MM(["X4"], ["X2", "X3"], ["X1", "Y"], String[], ω),
+# ])
+# (w, h) = omega_submodular_width(H, ω; expr, verbose = false)
+# println(w)
+# full_w = eval(full_expr, h)
+# @assert abs(w - full_w) < 1e-6 """
+#     - w = $w
+#     - full_w = $full_w
+# """
+# println(h)
 
 #-----------------------------------------------
 
