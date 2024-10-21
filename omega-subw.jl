@@ -639,6 +639,36 @@ function Base.show(io::IO, h::Dict{Set{T}, Float64}) where T
     end
 end
 
+function is_polymatroid(h::Dict{Set{T}, Float64}, ϵ::Number = 1e-12) where T
+    V = reduce(union!, keys(h); init = Set{T}())
+    vars = sort(collect(V))
+    h[Set{T}()] ≥ -ϵ || return false
+    for X ∈ powerset(vars)
+        for y ∈ V, z ∈ V
+            y ∈ X && continue
+            z ∈ X && continue
+            y == z && continue
+            A = Set(X) ∪ Set((y,))
+            B = Set(X) ∪ Set((z,))
+            AnB = Set(X)
+            AoB = Set(X) ∪ Set((y, z))
+            h[A] + h[B] - h[AnB] - h[AoB] ≥ -epsilon || return false
+        end
+    end
+    for x ∈ V
+        X = setdiff(V, Set((x,)))
+        h[V] - h[X] ≥ -ϵ || return false
+    end
+    return true
+end
+
+function is_edge_dominated(h::Dict{Set{T}, Float64}, H::Hypergraph{T}, ϵ::Number = 1e-12) where T
+    for E ∈ H.edges
+        h[E] ≤ 1.0 + ϵ || return false
+    end
+    return true
+end
+
 #-------------------------------------------------------------------------------------------
 
 function test1()
@@ -908,145 +938,6 @@ full_w = eval(full_expr, h)
 """
 println(h)
 
-#-------------------------------------------------------------------------------------------
-
-function lower_bound_triangle_tree(k::Int, ω::Number, ϵ::Number = 1e-12, verbose::Bool = false)
-    vars = ["Y"; ["X$i" for i in 1:k]]
-    @show(vars)
-    edges = [["X$i", "Y"] for i in 1:k]
-    push!(edges, ["X$i" for i in 1:k])
-
-    H = Hypergraph(vars, edges)
-
-    n = length(H.vars)
-    N = 2 ^ n
-
-    f(z::Int) = name(unzip(H, z))
-
-    # initialize a linear program (LP)
-    model = Model(Clp.Optimizer)
-    set_optimizer_attribute(model, "LogLevel", 0)
-
-    # Let `V` be the set of vertices of `H`. For each subset `U ⊆ V`, the LP contains a
-    # corresponding variable `h[U]`
-    @variable(model, h[0:N-1])
-
-    # The LP contains the constraint `h[∅] = 0`
-    verbose && println("\nZero Constraint:")
-    @constraint(model, h[0] == 0.0)
-    verbose && println("$(f(0)) = 0.0")
-
-    # For each `X ⊆ Y ⊆ V`, the LP contains a constraint `h[X] ≤ h[Y]`. These are called
-    # "monotonicity constraints"
-    verbose && println("\n(Basic) Monotonicity Constraints:")
-    Y = N - 1
-    for y = 0:n-1
-        X = Y & ~(1 << y)
-        @constraint(model, h[Y] - h[X] ≥ 0.0)
-        verbose && println("$(f(Y)) - $(f(X)) ≥ 0.0")
-    end
-
-    # For each `Y, Z ⊆ V` where `Y` and `Z` are not contained in one another, the LP
-    # contains a constraint `h[Y] + h[Z] ≥ h[Y ∩ Z] + h[Y ∪ Z]`. These are called
-    # "submodularity constraints". (Alternatively they can formulated as follows
-    # using "conditional entropy" notation: `h[Y | Y ∩ Z] ≥ h[Y ∪ Z | Z]`.)
-    verbose && println("\n(Basic) Submodularity Constraints:")
-    for X = 0:N-1, y = 0:n-1, z = y+1:n-1
-        if (X & (1 << y) == 0) && (X & (1 << z) == 0)
-            Y = X | (1 << y)
-            Z = X | (1 << z)
-            W = Y | (1 << z)
-            @constraint(model, h[Y] + h[Z] - h[X] - h[W] ≥ 0.0)
-            verbose && println("$(f(Y)) + $(f(Z)) - $(f(X)) - $(f(W)) ≥ 0.0")
-        end
-    end
-
-    # For each hyperedge `e` in `H`, the LP contains a constraint `h[e] ≤ 1.0`. These
-    # are called "edge-domination" constraints.
-    verbose && println("\nEdge-domination Constraints:")
-    for edge in H.edges
-        E = zip(H, edge)
-        @constraint(model, h[E] ≤ 1.0)
-        verbose && println("$(f(E)) ≤ 1.0")
-    end
-
-    Xs = zip(H, ["X$i" for i in 1:k])
-    XsY = zip(H, [["X$i" for i in 1:k]; "Y"])
-    Y = zip(H, ["Y"])
-
-    Δ = isodd(k) ?
-        1 - 1 / ((ω - 2) * floor((k - 1)/2) + ceil((k - 1)/2) + 1) :
-        1 - 1 / ((ω - 1) * (k - 1)/2 + 1)
-    @show(Δ)
-
-    @constraint(model, -ϵ ≤ h[Y] - 1.0 + Δ / (k-1) ≤ ϵ)
-    for i = 1:k
-        XiY = zip(H, ["X$i", "Y"])
-        Xi = zip(H, ["X$i"])
-        @constraint(model, -ϵ ≤ h[XiY] - h[Xi] - Δ ≤ ϵ)
-        @constraint(model, -ϵ ≤ h[XiY] - 1.0 ≤ ϵ)
-        # @constraint(model, -ϵ ≤ h[XiY] - h[Xi] - h[XsY] + h[Xs] ≤ ϵ)
-    end
-
-    @constraint(model, -ϵ ≤ h[XsY] - 1.0 - Δ ≤ ϵ)
-    @constraint(model, -ϵ ≤ h[Xs] - 1.0 ≤ ϵ)
-
-    # for Z in combinations(["X$i" for i in 1:k], Int(floor(k/2)))
-    #     @constraint(model, -ϵ ≤ h[zip(H, Z)] - sum(h[zip(H, [Xi])] for Xi in Z) ≤ ϵ)
-    # end
-
-    A = ["X$i" for i in 1:Int(floor(k/2))]
-    B = ["X$i" for i in Int(floor(k/2)) + 1:k]
-    # @constraint(model, -ϵ ≤ h[zip(H, A)] - sum(h[zip(H, [Xi])] for Xi in A) ≤ ϵ)
-    # @constraint(model, -ϵ ≤ h[zip(H, B)] - sum(h[zip(H, [Xi])] for Xi in B) ≤ ϵ)
-
-    # A_size = Int(floor((k-1)/2))
-
-    # for i in 1:k
-    #     X1 = "X$i"
-    #     others = ["X$j" for j in 1:k if j != i]
-    #     for A in combinations(others, A_size)
-    #         B = setdiff(others, A)
-    #         AX1 = [A; X1]
-    #         BX1 = [B; X1]
-
-    #         @constraint(model, -ϵ ≤ h[zip(H, AX1)] - sum(h[zip(H, [Xi])] for Xi in AX1) ≤ ϵ)
-    #         @constraint(model, -ϵ ≤ h[zip(H, BX1)] - sum(h[zip(H, [Xi])] for Xi in BX1) ≤ ϵ)
-    #         # @constraint(model, -ϵ ≤ h[zip(H, A)] - h[zip(H, AX1)] + h[zip(H, [X1])] ≤ ϵ)
-    #         # @constraint(model, -ϵ ≤ h[zip(H, B)] - h[zip(H, BX1)] + h[zip(H, [X1])] ≤ ϵ)
-    #         @constraint(model,
-    #             -ϵ ≤ (ω - 2) * h[zip(H, A)] + h[zip(H, B)] + h[zip(H, [X1, "Y"])] - 1.0 - Δ ≤ ϵ)
-    #     end
-    # end
-
-    optimize!(model)
-    @assert termination_status(model) == MathOptInterface.OPTIMAL
-
-    polymatroid = Dict{Set{String}, Float64}()
-    verbose && println("\nOptimal Primal Solution:")
-    sol = value.(h)
-    for i = 0:N-1
-        polymatroid[unzip(H, i)] = sol[i]
-        # verbose && println("$(f(i)) = $(sol[i])")
-    end
-    println(polymatroid)
-    expr = min_elimination_cost(H, ω, verbose)
-    println(expr)
-    v = eval(expr, polymatroid)
-    for arg in expr.args
-        v2 = eval(arg, polymatroid)
-        if abs(v - v2) < 1e-6
-            println()
-            println(arg)
-            println()
-        end
-    end
-    @assert abs(1 + Δ - v) < 1e-6 """
-     - 1+Δ: $(1 + Δ)
-     - v: $v
-    """
-
-    return polymatroid
-end
+#-----------------------------------------------
 
 end
