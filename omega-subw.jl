@@ -14,6 +14,7 @@ using MathOptInterface
 using Combinatorics
 using DataStructures
 using AutoHashEquals
+using Random
 
 #-------------------------------------------------------------------------------------------
 
@@ -678,8 +679,8 @@ end
 function primal_dual_method(
     H::Hypergraph{T},
     ω::Number;
-    max_iter = 20,
-    max_terms = 5,
+    max_iter = 100,
+    max_terms = 7,
     ϵ = 1e-6
 ) where T
     full_expr = min_elimination_cost(H, ω)
@@ -701,7 +702,7 @@ function primal_dual_method(
         @assert w2 < w
         min_args = [ψ for ψ in full_expr.args if abs(eval(ψ, h) - w2) ≤ ϵ]
         @assert isempty(min_args ∩ args)
-        push!(args, min_args[1])
+        push!(args, min_args[rand(1:length(min_args))])
         if length(args) > max_terms
             args = args[end-max_terms+1:end]
         end
@@ -957,36 +958,9 @@ for ω = 2.0
 
 # ω = 2.5
 
-# full_expr = min_elimination_cost(H, ω, false)
-# println(full_expr)
-# println()
-# println()
-# println()
-
-# expr = Min([
-#     Sum(Dict(Set(["Y", "X1", "X2", "X3", "X4"]) => Constant(1.0))),
-
-#     MM(["X1", "X2"], ["X3", "X4"], ["Y"], String[], ω),
-#     MM(["X1", "X3"], ["X2", "X4"], ["Y"], String[], ω),
-#     MM(["X1", "X4"], ["X2", "X3"], ["Y"], String[], ω),
-
-#     # MM(["X1"], ["X2", "X3", "X4"], ["Y"], String[], ω),
-#     # MM(["X2"], ["X1", "X3", "X4"], ["Y"], String[], ω),
-#     # MM(["X3"], ["X1", "X2", "X4"], ["Y"], String[], ω),
-#     # MM(["X4"], ["X1", "X2", "X3"], ["Y"], String[], ω),
-
-#     # MM(["X1"], ["X2", "X3"], ["Y"], String["X4"], ω),
-# ])
-# (w, h) = omega_submodular_width(H, ω; expr, verbose = false)
+# (w, h) = primal_dual_method(H, ω; max_iter = 100, max_terms = 7)
 # println(w)
 # println(h)
-# @assert is_polymatroid(h)
-# @assert is_edge_dominated(h, H)
-# full_w = eval(full_expr, h)
-# @assert abs(w - full_w) < 1e-6 """
-#     - w = $w
-#     - full_w = $full_w
-# """
 
 #-----------------------------------------------
 # Xiao's 4-pyramid lowe bound polymatroid:
