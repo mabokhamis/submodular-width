@@ -642,18 +642,17 @@ end
 function is_polymatroid(h::Dict{Set{T}, Float64}, ϵ::Number = 1e-6) where T
     V = reduce(union!, keys(h); init = Set{T}())
     vars = sort(collect(V))
-    h[Set{T}()] ≥ -ϵ || return false
+    -ϵ ≤ h[Set{T}()] ≤ +ϵ || return false
     for X ∈ powerset(vars)
-        for y ∈ V, z ∈ V
-            y ∈ X && continue
-            z ∈ X && continue
+        C = setdiff(V, X)
+        for y ∈ C, z ∈ C
             y == z && continue
             A = Set(X) ∪ Set((y,))
             B = Set(X) ∪ Set((z,))
             AnB = Set(X)
             AoB = Set(X) ∪ Set((y, z))
             h[A] + h[B] - h[AnB] - h[AoB] ≥ -ϵ || begin
-                @warn "$A $B"
+                @warn "Violated submodularity: $A $B"
                 return false
             end
         end
@@ -910,43 +909,43 @@ for ω = 2.0
 
 #-----------------------------------------------
 
-H = Hypergraph(
-    ["Y", "X1", "X2", "X3", "X4"],
-    [["X1", "Y"], ["X2", "Y"], ["X3", "Y"], ["X4", "Y"], ["X1", "X2", "X3", "X4"]]
-)
+# H = Hypergraph(
+#     ["Y", "X1", "X2", "X3", "X4"],
+#     [["X1", "Y"], ["X2", "Y"], ["X3", "Y"], ["X4", "Y"], ["X1", "X2", "X3", "X4"]]
+# )
 
-ω = 2.5
+# ω = 2.5
 
-full_expr = min_elimination_cost(H, ω, false)
-println(full_expr)
-println()
-println()
-println()
+# full_expr = min_elimination_cost(H, ω, false)
+# println(full_expr)
+# println()
+# println()
+# println()
 
-expr = Min([
-    Sum(Dict(Set(["Y", "X1", "X2", "X3", "X4"]) => Constant(1.0))),
+# expr = Min([
+#     Sum(Dict(Set(["Y", "X1", "X2", "X3", "X4"]) => Constant(1.0))),
 
-    MM(["X1", "X2"], ["X3", "X4"], ["Y"], String[], ω),
-    MM(["X1", "X3"], ["X2", "X4"], ["Y"], String[], ω),
-    MM(["X1", "X4"], ["X2", "X3"], ["Y"], String[], ω),
+#     MM(["X1", "X2"], ["X3", "X4"], ["Y"], String[], ω),
+#     MM(["X1", "X3"], ["X2", "X4"], ["Y"], String[], ω),
+#     MM(["X1", "X4"], ["X2", "X3"], ["Y"], String[], ω),
 
-    # MM(["X1"], ["X2", "X3", "X4"], ["Y"], String[], ω),
-    # MM(["X2"], ["X1", "X3", "X4"], ["Y"], String[], ω),
-    # MM(["X3"], ["X1", "X2", "X4"], ["Y"], String[], ω),
-    # MM(["X4"], ["X1", "X2", "X3"], ["Y"], String[], ω),
+#     # MM(["X1"], ["X2", "X3", "X4"], ["Y"], String[], ω),
+#     # MM(["X2"], ["X1", "X3", "X4"], ["Y"], String[], ω),
+#     # MM(["X3"], ["X1", "X2", "X4"], ["Y"], String[], ω),
+#     # MM(["X4"], ["X1", "X2", "X3"], ["Y"], String[], ω),
 
-    # MM(["X1"], ["X2", "X3"], ["Y"], String["X4"], ω),
-])
-(w, h) = omega_submodular_width(H, ω; expr, verbose = false)
-println(w)
-println(h)
-full_w = eval(full_expr, h)
-@assert abs(w - full_w) < 1e-6 """
-    - w = $w
-    - full_w = $full_w
-"""
-@assert is_polymatroid(h)
-@assert is_edge_dominated(h, H)
+#     # MM(["X1"], ["X2", "X3"], ["Y"], String["X4"], ω),
+# ])
+# (w, h) = omega_submodular_width(H, ω; expr, verbose = false)
+# println(w)
+# println(h)
+# @assert is_polymatroid(h)
+# @assert is_edge_dominated(h, H)
+# full_w = eval(full_expr, h)
+# @assert abs(w - full_w) < 1e-6 """
+#     - w = $w
+#     - full_w = $full_w
+# """
 
 #-----------------------------------------------
 # Xiao's 4-pyramid lowe bound polymatroid:
