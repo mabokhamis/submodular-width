@@ -922,10 +922,12 @@ for ω = 2.0
 #     [["X1", "Y"], ["X2", "Y"], ["X3", "Y"], ["X1", "X2", "X3"]]
 # )
 
-# ω = 2
+# ω = 2.5
 # (w, h) = omega_submodular_width(H, ω; verbose = false)
+# (w2, h2) = primal_dual_method(H, ω)
 # println(w)
 # println(2 - 1/ω)
+# println(w2)
 
 #-----------------------------------------------
 
@@ -934,9 +936,11 @@ for ω = 2.0
 #     [["A", "B"], ["B", "C"], ["C", "D"], ["D", "A"]]
 # )
 
-# ω = 2
+# ω = 2.5
 # (w, h) = omega_submodular_width(H, ω; verbose = false)
+# (w2, h2) = primal_dual_method(H, ω)
 # println(w)
+# println(w2)
 
 #-----------------------------------------------
 
