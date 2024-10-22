@@ -690,10 +690,6 @@ function primal_dual_method(
     for i = 1:max_iter
         expr = Min(args)
         @warn "Iteration $i : $expr"
-        expr = distribute(expr)
-        if !(expr isa Max)
-            expr = Max([expr])
-        end
         (w, h) = omega_submodular_width(H, ω; expr)
         @assert is_polymatroid(h)
         @assert is_edge_dominated(h, H)
@@ -752,7 +748,7 @@ end
 # test2()
 
 function test3()
-    ω = 2.5
+    ω = 2.7
     H = Hypergraph(
         ["A", "B", "C", "D"],
         [["A", "B"], ["A", "C"], ["A", "D"], ["B", "C"], ["B", "D"], ["C", "D"]]
@@ -760,12 +756,15 @@ function test3()
     # X = ["A"]
     # t = min_U_EMM(H, Set(X), ω, true)
     # println(t)
-    (w, h) = omega_submodular_width(H, ω; verbose = true)
-    println(w)
+    # (w, h) = omega_submodular_width(H, ω; verbose = true)
+    # println(w)
+    println((ω + 1)/2)
+    (w2, h2) = primal_dual_method(H, ω)
+    println(w2)
     println((ω + 1)/2)
 end
 
-# test3()
+test3()
 
 #-------------------------------------------------------------------------------------------
 
