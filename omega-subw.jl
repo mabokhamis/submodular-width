@@ -585,7 +585,9 @@ function omega_submodular_width(H::Hypergraph{T}, m::Min{T}; verbose::Bool = tru
     return (obj, polymatroid)
 end
 
-function omega_submodular_width(H::Hypergraph{T}, ω::Number; verbose::Bool = true, expr = nothing) where T
+function omega_submodular_width(
+    H::Hypergraph{T}, ω::Number; expr = nothing, verbose::Bool = true
+) where T
     isnothing(expr) && (expr = min_elimination_cost(H, ω, verbose))
     println(expr)
     expr = distribute(expr)
@@ -673,6 +675,46 @@ end
 
 #-------------------------------------------------------------------------------------------
 
+function primal_dual_method(
+    H::Hypergraph{T},
+    ω::Number;
+    max_iter = 20,
+    max_terms = 5,
+    ϵ = 1e-6
+) where T
+    full_expr = min_elimination_cost(H, ω)
+    println(full_expr)
+    println(repeat("-", 40))
+    args = Term{T}[ψ for ψ in full_expr.args if ψ isa Sum]
+    @assert length(args) == 1
+    for i = 1:max_iter
+        expr = Min(args)
+        @warn "Iteration $i : $expr"
+        expr = distribute(expr)
+        if !(expr isa Max)
+            expr = Max([expr])
+        end
+        (w, h) = omega_submodular_width(H, ω; expr)
+        @assert is_polymatroid(h)
+        @assert is_edge_dominated(h, H)
+        @assert abs(eval(expr, h) - w) ≤ ϵ
+        w2 = eval(full_expr, h)
+        if abs(w - w2) ≤ ϵ
+            return (w, h)
+        end
+        @assert w2 < w
+        min_args = [ψ for ψ in full_expr.args if abs(eval(ψ, h) - w2) ≤ ϵ]
+        @assert isempty(min_args ∩ args)
+        push!(args, min_args[1])
+        if length(args) > max_terms
+            args = args[end-max_terms+1:end]
+        end
+    end
+    return nothing
+end
+
+#-------------------------------------------------------------------------------------------
+
 function test1()
     ω = 2.5
     t = Min([
@@ -703,8 +745,8 @@ function test2()
     (w, h) = omega_submodular_width(H, ω; verbose = true)
     println(w)
     println(2 * ω / (ω + 1))
-    println(is_polymatroid(h))
-    println(is_edge_dominated(h, H))
+    (w2, h2) = primal_dual_method(H, ω)
+    println(w2)
 end
 
 # test2()
@@ -718,7 +760,7 @@ function test3()
     # X = ["A"]
     # t = min_U_EMM(H, Set(X), ω, true)
     # println(t)
-    w = omega_submodular_width(H, ω; verbose = true)
+    (w, h) = omega_submodular_width(H, ω; verbose = true)
     println(w)
     println((ω + 1)/2)
 end
@@ -733,7 +775,7 @@ end
 # )
 
 # ω = 2
-# w = omega_submodular_width(H, ω; verbose = false)
+# (w, h) = omega_submodular_width(H, ω; verbose = false)
 # println(w)
 # println(2 * ω / (ω + 1))
 
@@ -745,7 +787,7 @@ end
 # )
 
 # ω = 2
-# w = omega_submodular_width(H, ω; verbose = false)
+# (w, h) = omega_submodular_width(H, ω; verbose = false)
 # println(w)
 # println(1 + 2 * ω / (2ω + 3))
 
@@ -769,7 +811,7 @@ for ω = 2.0
 # )
 
 # ω = 2.0
-# w = omega_submodular_width(H, ω; verbose = false)
+# (w, h) = omega_submodular_width(H, ω; verbose = false)
 # println(w)
 # println((ω + 1)/2)
 
@@ -794,7 +836,7 @@ for ω = 2.0
 # )
 
 # ω = 2
-# w = omega_submodular_width(H, ω; verbose = false)
+# (w, h) = omega_submodular_width(H, ω; verbose = false)
 # println(w)
 # #=
 # for ω = 3.0
@@ -812,7 +854,7 @@ for ω = 2.0
 # )
 
 # ω = 2
-# w = omega_submodular_width(H, ω; verbose = false)
+# (w, h) = omega_submodular_width(H, ω; verbose = false)
 # println(w)
 # #=
 # for ω = 3.0
@@ -829,7 +871,7 @@ for ω = 2.0
 # )
 
 # ω = 2
-# w = omega_submodular_width(H, ω; verbose = false)
+# (w, h) = omega_submodular_width(H, ω; verbose = false)
 # println(w)
 # println(2 - 5/(6 * ω + 7))
 
@@ -841,7 +883,7 @@ for ω = 2.0
 # )
 
 # ω = 2
-# w = omega_submodular_width(H, ω; verbose = false)
+# (w, h) = omega_submodular_width(H, ω; verbose = false)
 # println(w)                      # 1.4285714285714286
 # println(2 - 10/(6 * ω + 7))     # 1.473684210526316
 
@@ -853,7 +895,7 @@ for ω = 2.0
 # )
 
 # ω = 2
-# w = omega_submodular_width(H, ω; verbose = false)
+# (w, h) = omega_submodular_width(H, ω; verbose = false)
 # println(w)
 # #=
 # for ω = 3.0
@@ -870,7 +912,7 @@ for ω = 2.0
 # )
 
 # ω = 2
-# w = omega_submodular_width(H, ω; verbose = false)
+# (w, h) = omega_submodular_width(H, ω; verbose = false)
 # println(w)
 
 #-----------------------------------------------
@@ -881,7 +923,7 @@ for ω = 2.0
 # )
 
 # ω = 2
-# w = omega_submodular_width(H, ω; verbose = false)
+# (w, h) = omega_submodular_width(H, ω; verbose = false)
 # println(w)
 # println(2 - 1/ω)
 
@@ -893,7 +935,7 @@ for ω = 2.0
 # )
 
 # ω = 2
-# w = omega_submodular_width(H, ω; verbose = false)
+# (w, h) = omega_submodular_width(H, ω; verbose = false)
 # println(w)
 
 #-----------------------------------------------
