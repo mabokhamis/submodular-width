@@ -971,4 +971,10 @@ end
 # # This is the free-connex submodular width
 # println(submodular_width(H))
 
+# H = Hypergraph(
+#     ["Y", "X1", "X2", "X3", "X4"],
+#     [["X1", "Y"], ["X2", "Y"], ["X3", "Y"], ["X4", "Y"], ["X1", "X2", "X3", "X4"]]
+# )
+# println(submodular_width(H))
+
 end
