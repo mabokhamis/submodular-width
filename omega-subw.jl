@@ -710,6 +710,16 @@ function primal_dual_method(
     return nothing
 end
 
+function verify_osubw_expr(expr, H::Hypergraph{T}, ω::Number; ϵ = 1e-6) where T
+    (w, h) = omega_submodular_width(H, ω; expr)
+    @assert is_polymatroid(h, ϵ)
+    @assert is_edge_dominated(h, H, ϵ)
+    @assert abs(eval(expr, h) - w) ≤ ϵ
+
+    full_expr = min_elimination_cost(H, ω)
+    return abs(eval(full_expr, h) - w) ≤ ϵ
+end
+
 #-------------------------------------------------------------------------------------------
 
 function test1()
@@ -955,16 +965,35 @@ for ω = 2.0
 
 #-----------------------------------------------
 
-# H = Hypergraph(
-#     ["Y", "X1", "X2", "X3", "X4"],
-#     [["X1", "Y"], ["X2", "Y"], ["X3", "Y"], ["X4", "Y"], ["X1", "X2", "X3", "X4"]]
-# )
+H = Hypergraph(
+    ["Y", "X1", "X2", "X3", "X4"],
+    [["X1", "Y"], ["X2", "Y"], ["X3", "Y"], ["X4", "Y"], ["X1", "X2", "X3", "X4"]]
+)
 
-# ω = 2.5
+ω = 2.4
 
 # (w, h) = primal_dual_method(H, ω; max_iter = 100, max_terms = 7)
 # println(w)
 # println(h)
+
+# expr = Min([
+#     Sum(Dict(Set(["Y", "X1", "X2", "X3", "X4"]) => Constant(1.0))),
+#     MM(["X1", "X2"], ["X3", "X4"], ["Y"], String[], ω),
+#     MM(["X1", "X2", "X3"], ["X4"], ["Y"], String[], ω),
+#     MM(["X1"], ["X3"], ["Y"], ["X2", "X4"], ω),
+#     MM(["X2"], ["X3", "X4"], ["Y"], ["X1"], ω),
+# ])
+# println(verify_osubw_expr(expr, H, ω))
+
+expr = Min([
+    Sum(Dict(Set(["Y", "X1", "X2", "X3", "X4"]) => Constant(1.0))),
+    MM(["X1", "X2"], ["X3", "X4"], ["Y"], String[], ω),
+    MM(["X1", "X3"], ["X2", "X4"], ["Y"], String[], ω),
+    MM(["X1", "X4"], ["X2", "X3"], ["Y"], String[], ω),
+    MM(["X1"], ["X2"], ["Y"], ["X3", "X4"], ω),
+    MM(["X3"], ["X4"], ["Y"], ["X1", "X2"], ω),
+])
+println(verify_osubw_expr(expr, H, ω))
 
 #-----------------------------------------------
 # Xiao's 4-pyramid lowe bound polymatroid:
