@@ -1006,27 +1006,64 @@ for ω = 2.0
 
 #-----------------------------------------------
 
-H = Hypergraph(
-    ["Y", "X1", "X2", "X3", "X4"],
-    [["X1", "Y"], ["X2", "Y"], ["X3", "Y"], ["X4", "Y"], ["X1", "X2", "X3", "X4"]]
-)
+# H = Hypergraph(
+#     ["Y", "X1", "X2", "X3", "X4"],
+#     [["X1", "Y"], ["X2", "Y"], ["X3", "Y"], ["X4", "Y"], ["X1", "X2", "X3", "X4"]]
+# )
 
-ω = 2.75
-# w = 5/3
-(w, h) = primal_dual_method(H, ω; max_iter = 100, max_terms = 7)
-println(w)
-println(h)
+# ω = 2.9
+# w = 1.7368421052631582
+# # (w, h) = primal_dual_method(H, ω; max_iter = 100, max_terms = 7)
+# # println(w)
+# # println(h)
 
-expr = Min([
-    Sum(Dict(Set(["Y", "X1", "X2", "X3", "X4"]) => Constant(1.0))),
-    MM(["X1", "X2"], ["X3", "X4"], ["Y"], String[], ω),
-])
-# println(verify_osubw_expr(expr, H, ω))
-(w2, h2) = omega_submodular_width(H, ω; expr, verbose = true)
-@show(ω)
-@show(w)
-@show(w2)
-@assert abs(w - w2) <= 1e-7
+# expr = Min([
+#     Sum(Dict(Set(["Y", "X1", "X2", "X3", "X4"]) => Constant(1.0))),
+#     MM(["X1", "X2"], ["X3", "X4"], ["Y"], String[], ω),
+# ])
+# # println(verify_osubw_expr(expr, H, ω))
+# (w2, h2) = omega_submodular_width(H, ω; expr, verbose = true)
+# @show(ω)
+# @show(w)
+# @show(w2)
+# @assert abs(w - w2) <= 1e-7
+
+#-----------------------------------------------
+
+function interpolate(val::Dict{Float64,Float64}, ϵ = 1e-7)
+    model = Model(Clp.Optimizer)
+    set_optimizer_attribute(model, "LogLevel", 0)
+    val = SortedDict(val)
+    @variable(model, a)
+    @variable(model, b)
+    @variable(model, c)
+    @variable(model, d)
+    @variable(model, e)
+    @variable(model, f)
+    for (ω, v) in val
+        @constraint(model, -ϵ <= b * ω + c - v * e * ω - v * f <= +ϵ)
+        @constraint(model, -ϵ <= c - 1.0 <= +ϵ)
+    end
+    optimize!(model)
+    @show(termination_status(model))
+    @assert termination_status(model) == MathOptInterface.OPTIMAL
+    return (value(a), value(b), value(c), value(d), value(e), value(f))
+end
+
+# (a, b, c, d, e, f) = interpolate(Dict(
+#     2.0 => 1.6,
+#     2.1 => 1.612244897959184,
+#     2.2 => 1.625,
+#     2.3 => 1.6382978723404258,
+#     2.4 => 1.6521739130434783,
+#     2.5 => 1.6666666666666666,
+#     2.6 => 1.6875,
+#     2.7 => 1.705882352953107,
+#     2.8 => 1.7222222222222254,
+#     2.9 => 1.7368421052631582,
+#     3.0 => 1.75,
+# ))
+# @show(a, b, c, d, e, f)
 
 #-----------------------------------------------
 # Xiao's 4-pyramid lowe bound polymatroid:
