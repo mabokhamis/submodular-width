@@ -517,10 +517,14 @@ function omega_submodular_width(H::Hypergraph{T}, m::Min{T}; verbose::Bool = tru
     # corresponding variable `h[U]`
     @variable(model, h[0:N-1])
 
+    d = Dict{String,Any}()
+
     # The LP contains the constraint `h[∅] = 0`
     verbose && println("\nZero Constraint:")
-    @constraint(model, h[0] == 0.0)
-    verbose && println("$(f(0)) = 0.0")
+    c = @constraint(model, h[0] == 0.0)
+    cn = " $(f(0)) = 0.0"
+    d[cn] = c
+    verbose && println(cn)
 
     # For each `X ⊆ Y ⊆ V`, the LP contains a constraint `h[X] ≤ h[Y]`. These are called
     # "monotonicity constraints"
@@ -528,8 +532,10 @@ function omega_submodular_width(H::Hypergraph{T}, m::Min{T}; verbose::Bool = tru
     Y = N - 1
     for y = 0:n-1
         X = Y & ~(1 << y)
-        @constraint(model, h[Y] - h[X] ≥ 0.0)
-        verbose && println("$(f(Y)) - $(f(X)) ≥ 0.0")
+        c = @constraint(model, h[Y] - h[X] ≥ 0.0)
+        cn = " $(f(Y)) - $(f(X)) ≥ 0.0"
+        d[cn] = c
+        verbose && println(cn)
     end
 
     # For each `Y, Z ⊆ V` where `Y` and `Z` are not contained in one another, the LP
@@ -542,8 +548,10 @@ function omega_submodular_width(H::Hypergraph{T}, m::Min{T}; verbose::Bool = tru
             Y = X | (1 << y)
             Z = X | (1 << z)
             W = Y | (1 << z)
-            @constraint(model, h[Y] + h[Z] - h[X] - h[W] ≥ 0.0)
-            verbose && println("$(f(Y)) + $(f(Z)) - $(f(X)) - $(f(W)) ≥ 0.0")
+            c = @constraint(model, h[Y] + h[Z] - h[X] - h[W] ≥ 0.0)
+            cn = "$(f(Y)) + $(f(Z)) - $(f(X)) - $(f(W)) ≥ 0.0"
+            d[cn] = c
+            verbose && println(cn)
         end
     end
 
@@ -552,8 +560,10 @@ function omega_submodular_width(H::Hypergraph{T}, m::Min{T}; verbose::Bool = tru
     verbose && println("\nEdge-domination Constraints:")
     for edge in H.edges
         E = zip(H, edge)
-        @constraint(model, h[E] ≤ 1.0)
-        verbose && println("$(f(E)) ≤ 1.0")
+        c = @constraint(model, h[E] ≤ 1.0)
+        cn = " $(f(E)) ≤ 1.0"
+        d[cn] = c
+        verbose && println(cn)
     end
 
     @variable(model, w >= 0.0)
@@ -561,8 +571,11 @@ function omega_submodular_width(H::Hypergraph{T}, m::Min{T}; verbose::Bool = tru
     verbose && println("\nObjective Constraints:")
     for s ∈ m.args
         @assert s isa Sum
-        @constraint(model, w ≤ sum(c.value * h[zip(H, X)] for (X, c) ∈ s.args))
-        verbose && println("w ≤ $(join(["$(c.value) * $(f(zip(H, X)))" for (X, c) ∈ s.args], " + "))")
+
+        c = @constraint(model, w ≤ sum(c.value * h[zip(H, X)] for (X, c) ∈ s.args))
+        cn = " w ≤ $(join(["$(c.value) * $(f(zip(H, X)))" for (X, c) ∈ s.args], " + "))"
+        d[cn] = c
+        verbose && println(cn)
     end
 
     # Finally, we set the objective of the LP to maximize `W`
@@ -583,11 +596,13 @@ function omega_submodular_width(H::Hypergraph{T}, m::Min{T}; verbose::Bool = tru
         verbose && println("$(f(i)) = $(sol[i])")
     end
 
-    return (obj, polymatroid)
+    d = Dict(name => dual(c) for (name, c) ∈ d)
+
+    return (obj, polymatroid, d)
 end
 
 function omega_submodular_width(
-    H::Hypergraph{T}, ω::Number; expr = nothing, verbose::Bool = true
+    H::Hypergraph{T}, ω::Number; expr = nothing, verbose::Bool = false
 ) where T
     isnothing(expr) && (expr = min_elimination_cost(H, ω, verbose))
     println(expr)
@@ -602,7 +617,11 @@ function omega_submodular_width(
         if !(arg isa Min)
             arg = Min([arg])
         end
-        bound, h = omega_submodular_width(H, arg; verbose = false)
+        bound, h, d = omega_submodular_width(H, arg; verbose = false)
+        if verbose
+            @warn "$bound"
+            println(d)
+        end
         bound2 = eval(arg, h)
         @assert abs(bound - bound2) < 1e-6 """
          - bound = $bound
@@ -639,6 +658,15 @@ function Base.show(io::IO, h::Dict{Set{T}, Float64}) where T
     sort!(v, by = x -> (length(x[1]), name(x[1])))
     for (x, v) ∈ v
         println(io, "$(name(x)) = $v")
+    end
+end
+
+function Base.show(io::IO, d::Dict{String,Float64})
+    d = SortedDict(d)
+    for (name, value) ∈ d
+        if abs(value) > 1e-6
+            println(io, "$value * [$name]")
+        end
     end
 end
 
@@ -983,18 +1011,18 @@ H = Hypergraph(
     [["X1", "Y"], ["X2", "Y"], ["X3", "Y"], ["X4", "Y"], ["X1", "X2", "X3", "X4"]]
 )
 
-ω = 2.5
-w = 5/3
-# (w, h) = primal_dual_method(H, ω; max_iter = 100, max_terms = 7)
-# println(w)
-# println(h)
+ω = 2.75
+# w = 5/3
+(w, h) = primal_dual_method(H, ω; max_iter = 100, max_terms = 7)
+println(w)
+println(h)
 
 expr = Min([
     Sum(Dict(Set(["Y", "X1", "X2", "X3", "X4"]) => Constant(1.0))),
     MM(["X1", "X2"], ["X3", "X4"], ["Y"], String[], ω),
 ])
 # println(verify_osubw_expr(expr, H, ω))
-(w2, h2) = omega_submodular_width(H, ω; expr)
+(w2, h2) = omega_submodular_width(H, ω; expr, verbose = true)
 @show(ω)
 @show(w)
 @show(w2)
