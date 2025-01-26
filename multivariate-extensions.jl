@@ -54,6 +54,22 @@ function HypergraphWidths.fractional_hypertree_width(E::Vector{Hypergraph{T}}) w
     return m
 end
 
+function HypergraphWidths.submodular_width(E::Vector{Hypergraph{T}}) where T
+    m = 0.0
+    witness_reported = false
+    println("    Computing submodular width of multivariate extensions:")
+    for (i, H) in enumerate(E)
+        w = submodular_width(H)
+        if abs(w - 2.0) < 1e-6 && !witness_reported
+            @warn "$H"
+            witness_reported = true
+        end
+        m = max(m, w)
+        println("        Extension $i/$(length(E)): SUBW so far: $m")
+    end
+    return m
+end
+
 #==========================================================================================#
 # Testcases:
 # ----------
@@ -266,5 +282,27 @@ end
 # # Result: 1:75
 
 #=========================================================================================#
+
+# # 4-cycle
+
+# H = Hypergraph(
+#     [:A, :B, :C, :D],
+#     [[:A, :B], [:B, :C], [:C, :D], [:D, :A]],
+# )
+
+# E = get_multivariate_extension(H, [:Z1, :Z2, :Z3, :Z4])
+# println("RESULT:", submodular_width(E))
+
+#=========================================================================================#
+
+# 2p''
+
+H = Hypergraph(
+    [:A, :B, :C],
+    [[:A], [:A, :B], [:B, :C], [:C]],
+)
+
+E = get_multivariate_extension(H, [:Z1, :Z2, :Z3, :Z4])
+println("RESULT:", submodular_width(E))
 
 end
