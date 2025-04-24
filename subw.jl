@@ -14,7 +14,7 @@ using Combinatorics
 using DataStructures
 
 export Hypergraph, FD, fractional_edge_cover, fractional_hypertree_width, submodular_width,
-    get_tds, get_trivial_tds
+    get_tds, get_trivial_tds, PseudoTree, valid_extensions, add_leaf!, enumerate_pseudotrees, fractional_hypertree_depth
 
 """
     Hypergraph{T}
@@ -286,6 +286,110 @@ function fractional_hypertree_width(
     end
     return fhtw
 end
+
+mutable struct PseudoTree{T}
+    root::Union{T, Nothing}
+    parent::Dict{T,T}
+    children::Dict{T,Set{T}}
+    vars::Set{T}
+    ancestors::Dict{T,Set{T}}
+
+    PseudoTree{T}() where T = new{T}(nothing, Dict{T,T}(), Dict{T,Set{T}}(), Set{T}(), Dict{T, Set{T}}()) 
+end
+
+function add_leaf!(P::PseudoTree{T}, v::T, p::Union{T, Nothing}) where T
+    P.children[v] = Set{T}()
+    push!(P.vars, v)
+    if isnothing(P.root)
+        P.root = v
+        P.ancestors[v] = Set{T}()
+        return
+    end
+    P.parent[v] = p
+    P.ancestors[v] = union(P.ancestors[p], p)
+    push!(P.children[p], v)
+end
+
+function Base.copy(P::PseudoTree{T}) where T
+    new_P = PseudoTree{T}()
+    new_P.root = copy(P.root)
+    new_P.parent = copy(P.parent)
+    new_P.children = copy(P.children)
+    new_P.vars = copy(P.vars)
+    new_P.ancestors = copy(P.ancestors)
+    return new_P
+end
+
+function valid_extensions(P::PseudoTree{T}, H::Hypergraph{T}) where T
+    exts = Tuple{T, T}[]
+    for h_var in setdiff(H.vars, P.vars)
+        coincident_vars = union([H.edges[idx] for idx in H._var_edges[h_var]]...)
+        # It should never be beneficial to add a (p_var, h_var) edge to the PT which does not
+        # occur in H.
+        for p_var in ∩(P.vars, coincident_vars)
+            new_branch = union(P.ancestors[p_var], [p_var])
+            is_valid = true
+            for edge in [H.edges[idx] for idx in H._var_edges[h_var]]
+                # If an edge includes 'h_var' and variables which are on a different branch,
+                # then adding the variable here would result in that edge spanning multiple branches
+                # which is not valid. 
+                if ∩(edge, P.vars) != ∩(edge, new_branch)
+                    is_valid = false
+                    break
+                end
+            end
+            if is_valid 
+                push!(exts, (h_var, p_var))
+            end
+        end 
+    end
+    return exts
+end
+
+function enumerate_pseudotrees(H::Hypergraph{T}, verbose) where T
+    pseudotrees = Set{PseudoTree{T}}()
+    for v in H.vars
+        var_tree = PseudoTree{T}()
+        add_leaf!(var_tree, v, nothing)
+        push!(pseudotrees, var_tree)
+    end
+    for i in 1:(length(H.vars)-1)
+        next_pseudotrees = Set{PseudoTree{T}}()
+        for pt in pseudotrees
+            for v_ext in valid_extensions(pt, H)
+                new_pt = copy(pt)
+                add_leaf!(new_pt, v_ext[1], v_ext[2])
+                push!(next_pseudotrees, new_pt)
+            end
+        end
+        pseudotrees = next_pseudotrees
+    end
+    return pseudotrees
+end
+
+
+
+"""
+    fractional_hypertree_depth(H, [verbose])
+
+Compute the fractional hypertree depth of hypergraph 'H'.
+
+"""
+
+function fractional_hypertree_depth(H::Hypergraph{T}, P::PseudoTree{T}) where T
+    leaves = [v for v in P.vars if length(P.children[v]) == 0]
+    branches = [∪(P.ancestors[v], [v]) for v in leaves]
+    println(P)
+    println(branches)
+    branch_depths = [fractional_edge_cover(H, collect(branch)) for branch in branches]
+    return maximum(branch_depths; init = 0)
+end
+
+function fractional_hypertree_depth(H::Hypergraph{T}, verbose=true) where T
+    pseudotrees = enumerate_pseudotrees(H, verbose)
+    return minimum([fractional_hypertree_depth(H, P) for P in pseudotrees]; init = Inf)
+end
+
 
 """
     zip(H, U)
