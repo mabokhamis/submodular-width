@@ -12,9 +12,10 @@ using Clp
 using MathOptInterface
 using Combinatorics
 using DataStructures
+using IterTools
 
 export Hypergraph, FD, fractional_edge_cover, fractional_hypertree_width, submodular_width,
-    get_tds, get_trivial_tds, PseudoTree, valid_extensions, add_leaf!, enumerate_pseudotrees, fractional_hypertree_depth
+    get_tds, get_trivial_tds, PseudoTree, valid_extensions, add_leaf!, enumerate_pseudotrees, fractional_hypertree_depth, fractional_hypertree_depth_with_caching
 
 """
     Hypergraph{T}
@@ -289,23 +290,26 @@ end
 
 mutable struct PseudoTree{T}
     root::Union{T, Nothing}
-    parent::Dict{T,T}
+    parent::Dict{T, Union{T, Nothing}}
     children::Dict{T,Set{T}}
+    depth::Dict{T,Int}
     vars::Set{T}
-    ancestors::Dict{T,Set{T}}
-
-    PseudoTree{T}() where T = new{T}(nothing, Dict{T,T}(), Dict{T,Set{T}}(), Set{T}(), Dict{T, Set{T}}()) 
+    ancestors::Dict{T,Vector{T}}
+    context::Dict{T, NamedTuple{(:I, :S), Tuple{Set{T}, Set{T}}}}
+    PseudoTree{T}() where T = new{T}(nothing, Dict(), Dict(), Dict(), Set(), Dict(), Dict()) 
 end
 
 function add_leaf!(P::PseudoTree{T}, v::T, p::Union{T, Nothing}) where T
     P.children[v] = Set{T}()
+    P.parent[v] = p
     push!(P.vars, v)
     if isnothing(P.root)
         P.root = v
-        P.ancestors[v] = Set{T}()
+        P.ancestors[v] = T[]
+        P.depth[v] = 1
         return
     end
-    P.parent[v] = p
+    P.depth[v] = P.depth[p] + 1
     P.ancestors[v] = union(P.ancestors[p], p)
     push!(P.children[p], v)
 end
@@ -315,8 +319,10 @@ function Base.copy(P::PseudoTree{T}) where T
     new_P.root = copy(P.root)
     new_P.parent = copy(P.parent)
     new_P.children = copy(P.children)
+    new_P.depth = copy(P.depth)
     new_P.vars = copy(P.vars)
     new_P.ancestors = copy(P.ancestors)
+    new_P.context = copy(P.context)
     return new_P
 end
 
@@ -367,6 +373,15 @@ function enumerate_pseudotrees(H::Hypergraph{T}, verbose) where T
     return pseudotrees
 end
 
+function get_descendants(H::Hypergraph{T}, P::PseudoTree{T}, var::T) where T
+    descendants = Set{T}()
+    for v in P.vars
+        if var ∈ P.ancestors[v]
+            push!(descendants, v)
+        end 
+    end
+    return descendants
+end
 
 
 """
@@ -379,8 +394,6 @@ Compute the fractional hypertree depth of hypergraph 'H'.
 function fractional_hypertree_depth(H::Hypergraph{T}, P::PseudoTree{T}) where T
     leaves = [v for v in P.vars if length(P.children[v]) == 0]
     branches = [∪(P.ancestors[v], [v]) for v in leaves]
-    println(P)
-    println(branches)
     branch_depths = [fractional_edge_cover(H, collect(branch)) for branch in branches]
     return maximum(branch_depths; init = 0)
 end
@@ -390,6 +403,106 @@ function fractional_hypertree_depth(H::Hypergraph{T}, verbose=true) where T
     return minimum([fractional_hypertree_depth(H, P) for P in pseudotrees]; init = Inf)
 end
 
+
+function get_context(H::Hypergraph{T}, P::PseudoTree{T}, var::T) where T
+    ancestors = P.ancestors[var]
+    descendants = union(get_descendants(H, P, var), [var])
+    ctx = Set{T}()
+    for edge in H.edges
+        if !isempty(∩(edge, ancestors)) && !isempty(∩(edge, descendants))
+            union!(ctx, ∩(edge, ancestors))
+        end
+    end
+    return sort(collect(ctx), by=(x)->P.depth[x])
+end
+
+function split_context(H::Hypergraph{T}, P::PseudoTree{T}, ctx::Vector{T}, s) where T
+    valid_S = T[]
+    valid_I = ctx
+    for i in 0:(length(ctx)-1)
+        S = ctx[(length(ctx)-i+1):end]
+        I = ctx[1:(length(ctx)-i)]
+        S_space = fractional_edge_cover(H, S)
+        if S_space ≤ s
+            valid_S = S
+            valid_I = I
+        else
+            break
+        end
+    end
+    return (I=Set(valid_I), S=Set(valid_S))
+end
+
+function set_contexts!(H::Hypergraph{T}, P::PseudoTree{T}, s) where T 
+    for var in P.vars
+        full_ctx = get_context(H, P, var)
+        P.context[var] = split_context(H, P, full_ctx, s)
+    end
+end
+
+function var_cover_to_RV_sets(H::Hypergraph{T}, P::PseudoTree{T}, vc_dict::Dict{T, Union{T, Nothing}}) where T
+    RV_dict = Dict{T, Set{T}}()
+    for var in P.vars
+        RVs = ∪(Set{T}(P.context[var].I), P.context[var].S, [var])
+        vc = vc_dict[var]
+        while !isnothing(vc)
+            RVs = ∪(RVs, P.context[vc].I, P.context[vc].S, [vc])
+            vc = vc_dict[vc]
+        end
+        RV_dict[var] = RVs
+    end
+    return RV_dict
+end
+
+# Assuming contexts have already been set, compute the minimum relevant variables set.
+function compute_min_max_RV_width(H::Hypergraph{T}, P::PseudoTree{T}) where T
+    potential_var_covers = Dict{T, Set{Union{T, Nothing}}}()
+    for var in P.vars
+        potential_var_covers[var] = Set{T}()
+        if isempty(P.context[var].I)
+            push!(potential_var_covers[var], nothing)
+            continue
+        end
+        for ancestor in P.ancestors[var]
+            if ∪(P.context[ancestor].I, P.context[ancestor].S, [ancestor]) ⊇ P.context[var].I 
+                push!(potential_var_covers[var], ancestor)
+            end
+        end
+    end
+    ordered_vars = collect(P.vars)
+    ordered_var_covers = [potential_var_covers[v] for v in ordered_vars]
+    min_RV_width = Inf
+    best_var_cover = nothing
+    for var_cover in IterTools.product(ordered_var_covers...)
+        vc_dict = Dict{T, Union{T, Nothing}}(ordered_vars[i]=>var_cover[i] for i in eachindex(var_cover))
+        RV_dict = var_cover_to_RV_sets(H, P, vc_dict)
+        max_RV_width = maximum([fractional_edge_cover(H, collect(RVs)) for RVs in values(RV_dict)])
+        if max_RV_width < min_RV_width
+            min_RV_width = min(min_RV_width, max_RV_width)
+            best_var_cover = vc_dict
+        end
+    end
+    return min_RV_width, best_var_cover
+end
+
+"""
+    fractional_hypertree_depth_with_caching(H, s, [verbose])
+
+Compute the fractional hypertree depth of hypergraph 'H'.
+
+"""
+function fractional_hypertree_depth_with_caching(H::Hypergraph{T}, P::PseudoTree{T}, s) where T
+    set_contexts!(H, P, s)
+    min_RV_width, best_var_cover = compute_min_max_RV_width(H, P)
+    println(P)
+    println(best_var_cover)
+    return min_RV_width
+end
+
+function fractional_hypertree_depth_with_caching(H::Hypergraph{T}, s, verbose=true) where T
+    pseudotrees = enumerate_pseudotrees(H, verbose)
+    return minimum([fractional_hypertree_depth_with_caching(H, P, s) for P in pseudotrees]; init = Inf)
+end
 
 """
     zip(H, U)
