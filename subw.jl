@@ -15,7 +15,8 @@ using DataStructures
 using IterTools
 
 export Hypergraph, FD, fractional_edge_cover, fractional_hypertree_width, submodular_width,
-    get_tds, get_trivial_tds, PseudoTree, valid_extensions, add_leaf!, enumerate_pseudotrees, fractional_hypertree_depth, fractional_hypertree_depth_with_caching
+    get_tds, get_trivial_tds, PseudoTree, valid_extensions, add_leaf!, enumerate_pseudotrees, fractional_hypertree_depth, fractional_hypertree_depth_with_caching, 
+    fractional_hypertree_depth_width
 
 """
     Hypergraph{T}
@@ -111,9 +112,9 @@ function Base.show(io::IO, H::Hypergraph{T}) where T
 end
 
 # if the TDs are missing in the hypergraph, initize them to contain all possible TDs
-function initialize_tds_if_missing(H)
+function initialize_tds_if_missing(H; remove_subsumed_tds=true)
     if length(H.tds) == 0
-        H.tds = get_tds(H.edges)
+        H.tds = get_tds(H.edges; remove_subsumed_tds=remove_subsumed_tds)
     end
 end
 
@@ -480,6 +481,7 @@ function compute_min_max_RV_width(H::Hypergraph{T}, P::PseudoTree{T}) where T
     ordered_var_covers = [potential_var_covers[v] for v in ordered_vars]
     min_RV_width = Inf
     best_var_cover = nothing
+    # For every variable cover, we compute the RV sets and take the maximum over all of their AGM bounds
     for var_cover in IterTools.product(ordered_var_covers...)
         vc_dict = Dict{T, Union{T, Nothing}}(ordered_vars[i]=>var_cover[i] for i in eachindex(var_cover))
         RV_dict = var_cover_to_RV_sets(H, P, vc_dict)
@@ -542,6 +544,69 @@ function fractional_hypertree_depth_with_caching(H::Hypergraph{T}, s, verbose=tr
     println("Best Var Cover: ", min_var_cover)
     println("Fractional Hypertree Depth With Caching: ", min_var_cover)
     return minimum_depth
+end
+
+"""
+    fractional_hypertree_depth_width(H, [verbose])
+
+Compute the fractional hypertree depth width of hypergraph `H`. If the vector of
+tree decompositions of `H` is empty, it is updated to contain all tree decompositions
+of `H`.
+"""
+function induced_hyper_subgraph(H::Hypergraph{T}, bag::Vector{T}) where T
+    new_edges = Set{T}[edge ∩ bag for edge in H.edges if !isempty(edge ∩ bag)]
+
+    return Hypergraph(collect(bag), new_edges)
+end
+
+function _bag_is_space_compliant(H::Hypergraph{T}, bag::Set{T}, s) where T
+    public_vars = Set{T}()
+    for var in bag
+        for edge in [H.edges[i] for i in H._var_edges[var]]
+            if !isempty(setdiff(edge, bag))
+                push!(public_vars, var)
+                break
+            end
+        end
+    end
+    bag_space = fractional_edge_cover(H, collect(public_vars))
+    println("Bag: $bag")
+    println("Public Vars: $public_vars")
+    println("Bag Space: $bag_space")
+    return bag_space ≤ s
+end
+
+function _td_is_space_compliant(H::Hypergraph{T}, td, s) where T
+    return all(_bag_is_space_compliant(H, bag, s) for bag in td)
+end
+
+# This is currently not valid, but not minimal because it doesn't necessarily consider ALL TDs. It only considers
+# TDs that arise from variable elimination.
+function fractional_hypertree_depth_width(
+    H::Hypergraph{T},
+    s;
+    verbose::Bool = false,
+) where T
+    initialize_tds_if_missing(H; remove_subsumed_tds = false)
+
+    fhtw = Inf
+    best_td = 0
+    # for each tree decomposition `td` of `H`
+    for (i, td) in enumerate(H.tds)
+        if !_td_is_space_compliant(H, td, s)
+            continue
+        end
+        # let `w` be the maximum fractional edge cover number among bags of `td`
+        w = maximum(fractional_hypertree_depth(induced_hyper_subgraph(H, collect(bag))) for bag in td; init = 0.0)
+        # find a `td` minimizing `w`; break ties by taking the `td` with the smallest
+        # number of bags
+        if w < fhtw - 1e-6 || abs(w-fhtw) <= 1e-6 && length(td) < length(H.tds[best_td])
+            fhtw = w
+            best_td = i
+        end
+    end
+    println("BEST TD: ", H.tds[best_td])
+    return fhtw
 end
 
 """
@@ -764,7 +829,7 @@ Construct all non-redundant tree decompositions of `edges`. Remove tree decompos
 are "subsumed" by others. If a tree decomposition `td1` is subsumed by `td2`, then including
 `td1` in the computation of fractional hypertree width or submodular width is redundant.
 """
-function get_tds(edges::Union{Vector{Vector{T}},Vector{Set{T}}})::Vector{Vector{Set{T}}} where T
+function get_tds(edges::Union{Vector{Vector{T}},Vector{Set{T}}}; remove_subsumed_tds=true)::Vector{Vector{Set{T}}} where T
     # convert `edges` from `Vector{Vector{T}}` to `Set{Set{T}}`
     edges = Set{Set{T}}(map(edge -> Set{T}(edge), edges))
     tds = Set{Set{Set{T}}}()
@@ -779,7 +844,9 @@ function get_tds(edges::Union{Vector{Vector{T}},Vector{Set{T}}})::Vector{Vector{
     end
     # convert `tds` from `Set{Set{Set{T}}}` to `Vector{Vector{Set{T}}}`
     tds = map(td -> collect(td), collect(tds))
-    tds = _remove_subsumed_tds(tds)
+    if remove_subsumed_tds
+        tds = _remove_subsumed_tds(tds)
+    end
     return tds
 end
 
