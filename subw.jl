@@ -322,11 +322,11 @@ function Base.copy(P::PseudoTree{T}) where T
     new_P = PseudoTree{T}()
     new_P.root = copy(P.root)
     new_P.parent = copy(P.parent)
-    new_P.children = copy(P.children)
+    new_P.children = deepcopy(P.children)
     new_P.depth = copy(P.depth)
     new_P.vars = copy(P.vars)
-    new_P.ancestors = copy(P.ancestors)
-    new_P.context = copy(P.context)
+    new_P.ancestors = deepcopy(P.ancestors)
+    new_P.context = deepcopy(P.context)
     return new_P
 end
 
@@ -423,7 +423,7 @@ end
 function split_context(H::Hypergraph{T}, P::PseudoTree{T}, ctx::Vector{T}, s) where T
     valid_S = T[]
     valid_I = ctx
-    for i in 0:(length(ctx)-1)
+    for i in 1:length(ctx)
         S = ctx[(length(ctx)-i+1):end]
         I = ctx[1:(length(ctx)-i)]
         S_space = fractional_edge_cover(H, S)
@@ -460,13 +460,16 @@ end
 
 # Assuming contexts have already been set, compute the minimum relevant variables set.
 function compute_min_max_RV_width(H::Hypergraph{T}, P::PseudoTree{T}) where T
+    # Compute the possible variable covers for each variable 
     potential_var_covers = Dict{T, Set{Union{T, Nothing}}}()
     for var in P.vars
         potential_var_covers[var] = Set{T}()
+        # If there are no I-variables, then you should always point the cover to itself (i.e. nothing)
         if isempty(P.context[var].I)
             push!(potential_var_covers[var], nothing)
             continue
         end
+        # Any ancestor whose context covers the I variables of 'var' is a valid cover
         for ancestor in P.ancestors[var]
             if ∪(P.context[ancestor].I, P.context[ancestor].S, [ancestor]) ⊇ P.context[var].I 
                 push!(potential_var_covers[var], ancestor)
