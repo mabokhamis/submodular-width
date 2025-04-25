@@ -310,8 +310,12 @@ function add_leaf!(P::PseudoTree{T}, v::T, p::Union{T, Nothing}) where T
         return
     end
     P.depth[v] = P.depth[p] + 1
-    P.ancestors[v] = union(P.ancestors[p], p)
+    P.ancestors[v] = union(P.ancestors[p], [p])
     push!(P.children[p], v)
+end
+
+function Base.copy(v::Symbol)
+    return v
 end
 
 function Base.copy(P::PseudoTree{T}) where T
@@ -494,14 +498,47 @@ Compute the fractional hypertree depth of hypergraph 'H'.
 function fractional_hypertree_depth_with_caching(H::Hypergraph{T}, P::PseudoTree{T}, s) where T
     set_contexts!(H, P, s)
     min_RV_width, best_var_cover = compute_min_max_RV_width(H, P)
-    println(P)
-    println(best_var_cover)
-    return min_RV_width
+    return min_RV_width, best_var_cover, P
 end
 
 function fractional_hypertree_depth_with_caching(H::Hypergraph{T}, s, verbose=true) where T
     pseudotrees = enumerate_pseudotrees(H, verbose)
-    return minimum([fractional_hypertree_depth_with_caching(H, P, s) for P in pseudotrees]; init = Inf)
+    println("ENUMERATED PSEUDOTREES: ", length(pseudotrees))
+    nthreads = Threads.nthreads()
+    println("N Threads: $nthreads")
+    count = 0
+    thread_minimum_depths = fill(Inf, nthreads)  # Per-thread minima initialized to Inf
+    thread_min_var_covers = fill(Dict(), nthreads)  # Per-thread minima initialized to Dict()
+    thread_min_pseudotrees = fill(PseudoTree{T}(), nthreads)  # Per-thread minima initialized to PseudoTree{T}()
+    Threads.@threads for P in collect(pseudotrees)
+        thread_id = Threads.threadid()  # Get current thread's ID (1-based)
+        count += 1
+        if count % 100 == 0
+            println(float(count)/length(pseudotrees), "% done")
+        end
+        # Update this thread's local minimum safely
+        min_RV_width, best_var_cover, P = fractional_hypertree_depth_with_caching(H, P, s)
+        if min_RV_width < thread_minimum_depths[thread_id]
+            thread_minimum_depths[thread_id] = min_RV_width
+            thread_min_var_covers[thread_id] = best_var_cover
+            thread_min_pseudotrees[thread_id] = P
+        end
+    end
+
+    minimum_depth = Inf
+    min_var_cover = nothing
+    min_pseudotree = nothing
+    for i in eachindex(thread_minimum_depths)
+        if thread_minimum_depths[i] < minimum_depth
+            minimum_depth = thread_minimum_depths[i]
+            min_var_cover = thread_min_var_covers[i]
+            min_pseudotree = thread_min_pseudotrees[i]
+        end
+    end
+    println("Best Pseudotree: ", min_pseudotree)
+    println("Best Var Cover: ", min_var_cover)
+    println("Fractional Hypertree Depth With Caching: ", min_var_cover)
+    return minimum_depth
 end
 
 """
