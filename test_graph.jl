@@ -24,30 +24,6 @@ H = Hypergraph(
     [11,4]]
 )
 
-#= 
-Example 23 (Improves Upon TDs)
-H = Hypergraph([:A, :B, :C, :D, :E, :F], 
-                [[:A, :B], 
-                [:A, :C], 
-                [:A, :D], 
-                [:A, :E], 
-                [:A, :F], 
-                [:B, :C], 
-                [:B, :D], 
-                [:B, :E], 
-                [:B, :F], 
-                [:F, :E], 
-                [:E, :D], 
-                [:D, :C], 
-                ]) 
-
-fhtd = 2.5
-
-Best Pseudotree: PseudoTree{Symbol}(:A, Dict{Symbol, Union{Nothing, Symbol}}(:F => :E, :A => nothing, :D => :E, :B => :A, :E => :B, :C => :D), Dict{Symbol, Set{Symbol}}(:F => Set(), :A => Set([:B]), :D => Set([:C]), :B => Set([:E]), :E => Set([:F, :D]), :C => Set()), Dict(:F => 4, :A => 1, :D => 4, :B => 2, :E => 3, :C => 5), Set([:F, :A, :D, :B, :E, :C]), Dict(:F => [:A, :B, :E], :A => [], :D => [:A, :B, :E], :B => [:A], :E => [:A, :B], :C => [:A, :B, :E, :D]), Dict{Symbol, @NamedTuple{I::Set{Symbol}, S::Set{Symbol}}}(:F => (I = Set([:A]), S = Set([:B, :E])), :A => (I = Set(), S = Set()), :D => (I = Set([:A]), S = Set([:B, :E])), :B => (I = Set(), S = Set([:A])), :E => (I = Set(), S = Set([:A, :B])), :C => (I = Set([:A]), S = Set([:D, :B]))))
-Best Var Cover: Dict{Any, Any}(:F => :A, :A => nothing, :D => :A, :B => nothing, :E => nothing, :C => :A)
-Fractional Hypertree Depth With Caching: Dict{Any, Any}(:F => :A, :A => nothing, :D => :A, :B => nothing, :E => nothing, :C => :A)
-fhtwc_1 = 2.0
-=#
 # Example 23 (Improves Upon TDs)
 
 #=
@@ -155,18 +131,51 @@ fhtdw_1 = 2.0
 =#
 
 
+H = Hypergraph([:A, :B, :C, :D, :E, :F, :G, :H, :F2, :G2, :H2,], 
+                 [[:A, :B], 
+                 [:A, :C], 
+                 [:A, :D], 
+                 [:B, :C], 
+                 [:B, :D], 
+                 [:B, :E], 
+                 [:C, :D], 
+                 [:C, :E], 
+                 [:D, :E], 
+                 [:D, :F], 
+                 [:D, :G], 
+                 [:E, :F], 
+                 [:E, :G], 
+                 [:E, :H], 
+                 [:F, :G], 
+                 [:F, :H], 
+                 [:G, :H], 
+                 [:H, :F2], 
+                 [:H, :G2], 
+                 [:G, :F2], 
+                 [:G, :G2], 
+                 [:G, :H2], 
+                 [:F2, :G2], 
+                 [:F2, :H2], 
+                 [:G2, :H2], 
+                  ])
  
 @show(H)
 fhtd = fractional_hypertree_depth(H)
 @show(fhtd)
 
 @show(H)
+fhtd = fractional_hypertree_width(H)
+@show(fhtd)
+
+@show(H)
 fhtwc_1 = fractional_hypertree_depth_with_caching(H, 1)
 @show(fhtwc_1)
 
+#= 
+
 @show(H)
 fhtdw_1 = fractional_hypertree_depth_width(H, 1)
-@show(fhtdw_1)
+@show(fhtdw_1) =#
 
 #= @show(H)
 fhtwc_2 = fractional_hypertree_depth_with_caching(H, 2)
