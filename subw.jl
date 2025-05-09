@@ -300,6 +300,14 @@ mutable struct PseudoTree{T}
     PseudoTree{T}() where T = new{T}(nothing, Dict(), Dict(), Dict(), Set(), Dict(), Dict()) 
 end
 
+function Base.isequal(P1::PseudoTree, P2::PseudoTree)
+    return P1.children == P2.children
+end
+
+function Base.hash(P1::PseudoTree, h::UInt)
+    return hash(P1.children, h)
+end
+
 function add_leaf!(P::PseudoTree{T}, v::T, p::Union{T, Nothing}) where T
     P.children[v] = Set{T}()
     P.parent[v] = p
@@ -494,6 +502,31 @@ function compute_min_max_RV_width(H::Hypergraph{T}, P::PseudoTree{T}) where T
     return min_RV_width, best_var_cover
 end
 
+
+# Assuming contexts have already been set, compute the minimum relevant variables set.
+function compute_min_max_RV_width2(H::Hypergraph{T}, P::PseudoTree{T}) where T
+
+    var_cover = Dict{Tuple{T,T}, Vector{T}}()
+    for depth in 1:max(values(P.depth)...)
+        cur_gen = [var for var in P.vars if P.depth[var] == depth]
+        for B in cur_gen
+            for A in ∪(P.ancestors[B], [B])
+                var_cover[(A, B)] = ∩(∪(P.ancestors[A], [A]), ∪(P.context[B].I, P.context[B].S, [B]))
+                shared_anc = ∩(∪(P.ancestors[A], [A]), P.context[B].I)
+                if !isempty(shared_anc)
+                    recent_shared_anc = argmin((v)->P.depth[v], shared_anc)
+                    var_cover[(A, B)] = var_cover[(A, B)] ∪ var_cover[(recent_shared_anc, P.parent[B])]
+                end
+            end
+        end
+    end
+    relevant_vars = Dict{T, Vector{T}}(A=>var_cover[(A, A)] for A in P.vars)
+#    println("Var Cover: ", var_cover)
+#    println("Relevant Vars: ", relevant_vars)
+    rv_width = maximum([fractional_edge_cover(H, rvs) for rvs in values(relevant_vars)])
+    return rv_width, var_cover
+end
+
 """
     fractional_hypertree_depth_with_caching(H, s, [verbose])
 
@@ -502,8 +535,8 @@ Compute the fractional hypertree depth of hypergraph 'H'.
 """
 function fractional_hypertree_depth_with_caching(H::Hypergraph{T}, P::PseudoTree{T}, s) where T
     set_contexts!(H, P, s)
-    min_RV_width, best_var_cover = compute_min_max_RV_width(H, P)
-    return min_RV_width, best_var_cover, P
+    min_RV_width, relevant_vars = compute_min_max_RV_width2(H, P)
+    return min_RV_width, relevant_vars, P
 end
 
 function fractional_hypertree_depth_with_caching(H::Hypergraph{T}, s, verbose=true) where T
