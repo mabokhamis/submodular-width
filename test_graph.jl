@@ -130,7 +130,7 @@ BEST TD: Set{Symbol}[Set([:A, :D, :B, :E, :C]), Set([:F, :H, :G, :D, :E])]
 fhtdw_1 = 2.0
 =#
 
-
+# To Camillo: You can try out different query graphs by changing this function.
 H = Hypergraph([:A, :B, :C, :D, :E, :F, :G, :H, :F2, :G2, :H2,], 
                  [[:A, :B], 
                  [:A, :C], 
@@ -159,23 +159,25 @@ H = Hypergraph([:A, :B, :C, :D, :E, :F, :G, :H, :F2, :G2, :H2,],
                  [:G2, :H2], 
                   ])
  
+# This is constant-space pseudo-tree depth
 @show(H)
-fhtd = fractional_hypertree_depth(H)
+ptd = fractional_hypertree_depth(H)
 @show(fhtd)
 
+# This is traditional fhtw with no space constraint. It's a bit slow, so fair warning.
 @show(H)
-fhtd = fractional_hypertree_width(H)
+fhtw = fractional_hypertree_width(H)
 @show(fhtd)
 
+# This is pseudo-tree depth with caching & resets
 @show(H)
 fhtwc_1 = fractional_hypertree_depth_with_caching(H, 1)
 @show(fhtwc_1)
 
-#= 
-
+# This is pseudo-tree depth without caching & resets + an outer hypertree decomposition w/ bounded separators (i.e. HTD[PT]). It can also be slow.
 @show(H)
 fhtdw_1 = fractional_hypertree_depth_width(H, 1)
-@show(fhtdw_1) =#
+@show(fhtdw_1)
 
 #= @show(H)
 fhtwc_2 = fractional_hypertree_depth_with_caching(H, 2)
