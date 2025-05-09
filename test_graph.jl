@@ -162,12 +162,12 @@ H = Hypergraph([:A, :B, :C, :D, :E, :F, :G, :H, :F2, :G2, :H2,],
 # This is constant-space pseudo-tree depth
 @show(H)
 ptd = fractional_hypertree_depth(H)
-@show(fhtd)
+@show(ptd)
 
 # This is traditional fhtw with no space constraint. It's a bit slow, so fair warning.
 @show(H)
 fhtw = fractional_hypertree_width(H)
-@show(fhtd)
+@show(fhtw)
 
 # This is pseudo-tree depth with caching & resets
 @show(H)
