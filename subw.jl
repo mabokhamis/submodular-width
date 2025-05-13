@@ -15,7 +15,7 @@ using DataStructures
 using IterTools
 
 export Hypergraph, FD, fractional_edge_cover, fractional_hypertree_width, submodular_width,
-    get_tds, get_trivial_tds, PseudoTree, valid_extensions, add_leaf!, enumerate_pseudotrees, fractional_hypertree_depth, fractional_hypertree_depth_with_caching, 
+    get_tds, get_trivial_tds, PseudoTree, valid_extensions, add_leaf!, enumerate_pseudotrees, fractional_hypertree_depth, fractional_hypertree_depth_with_caching,
     fractional_hypertree_depth_width
 
 """
@@ -109,6 +109,26 @@ function Base.show(io::IO, H::Hypergraph{T}) where T
     for (i, edge) ∈ enumerate(H.edges)
         println(io, "        ", sort(collect(edge)), " with weight $(H.weights[i])")
     end
+end
+
+function connected_component(H::Hypergraph{T}, v::T) where T
+    visited_vertices = Set{T}([])
+    frontier = Set{T}([v])
+    while !isempty(frontier)
+        new_frontier = Set{T}()
+        for v in frontier
+            push!(visited_vertices, v)
+            for edge in [H.edges[i] for i  in H._var_edges[v]]
+                for var in edge
+                    if var ∉ visited_vertices
+                        push!(new_frontier, var)
+                    end
+                end
+            end
+        end
+        frontier = new_frontier
+    end
+    return visited_vertices
 end
 
 # if the TDs are missing in the hypergraph, initize them to contain all possible TDs
@@ -297,7 +317,7 @@ mutable struct PseudoTree{T}
     vars::Set{T}
     ancestors::Dict{T,Vector{T}}
     context::Dict{T, NamedTuple{(:I, :S), Tuple{Set{T}, Set{T}}}}
-    PseudoTree{T}() where T = new{T}(nothing, Dict(), Dict(), Dict(), Set(), Dict(), Dict()) 
+    PseudoTree{T}() where T = new{T}(nothing, Dict(), Dict(), Dict(), Set(), Dict(), Dict())
 end
 
 function Base.isequal(P1::PseudoTree, P2::PseudoTree)
@@ -341,26 +361,30 @@ end
 
 function valid_extensions(P::PseudoTree{T}, H::Hypergraph{T}) where T
     exts = Tuple{T, T}[]
+    H_minus_P = induced_hyper_subgraph(H, setdiff(H.vars, P.vars))
     for h_var in setdiff(H.vars, P.vars)
         coincident_vars = union([H.edges[idx] for idx in H._var_edges[h_var]]...)
+        connected_vars = connected_component(H_minus_P, h_var)
         # It should never be beneficial to add a (p_var, h_var) edge to the PT which does not
         # occur in H.
         for p_var in ∩(P.vars, coincident_vars)
             new_branch = union(P.ancestors[p_var], [p_var])
             is_valid = true
-            for edge in [H.edges[idx] for idx in H._var_edges[h_var]]
-                # If an edge includes 'h_var' and variables which are on a different branch,
-                # then adding the variable here would result in that edge spanning multiple branches
-                # which is not valid. 
-                if ∩(edge, P.vars) != ∩(edge, new_branch)
-                    is_valid = false
-                    break
+            # If an edge includes pieces of the connected component for `h_var`, then it
+            # cannot also connect to a different branch. Otherwise, the two branches would
+            # need to connect later on.
+            for edge in H.edges
+                if !isempty(∩(edge, connected_vars))
+                    if ∩(edge, P.vars) != ∩(edge, new_branch)
+                        is_valid = false
+                        break
+                    end
                 end
             end
-            if is_valid 
+            if is_valid
                 push!(exts, (h_var, p_var))
             end
-        end 
+        end
     end
     return exts
 end
@@ -373,15 +397,18 @@ function enumerate_pseudotrees(H::Hypergraph{T}, verbose) where T
         push!(pseudotrees, var_tree)
     end
     for i in 1:(length(H.vars)-1)
-        next_pseudotrees = Set{PseudoTree{T}}()
-        for pt in pseudotrees
+        nthreads = Threads.nthreads()
+        thread_next_pseudotrees = [Set{PseudoTree{T}}() for i in 1:nthreads]  # Per-thread minima initialized to PseudoTree{T}()
+        Threads.@threads for pt in collect(pseudotrees)
+            thread_id = Threads.threadid()  # Get current thread's ID (1-based)
             for v_ext in valid_extensions(pt, H)
                 new_pt = copy(pt)
                 add_leaf!(new_pt, v_ext[1], v_ext[2])
-                push!(next_pseudotrees, new_pt)
+                push!(thread_next_pseudotrees[thread_id], new_pt)
             end
         end
-        pseudotrees = next_pseudotrees
+        println("Detected PseudoTrees = $(sum([length(pts) for pts in thread_next_pseudotrees]))")
+        pseudotrees = union(thread_next_pseudotrees...)
     end
     return pseudotrees
 end
@@ -391,7 +418,7 @@ function get_descendants(H::Hypergraph{T}, P::PseudoTree{T}, var::T) where T
     for v in P.vars
         if var ∈ P.ancestors[v]
             push!(descendants, v)
-        end 
+        end
     end
     return descendants
 end
@@ -446,7 +473,7 @@ function split_context(H::Hypergraph{T}, P::PseudoTree{T}, ctx::Vector{T}, s) wh
     return (I=Set(valid_I), S=Set(valid_S))
 end
 
-function set_contexts!(H::Hypergraph{T}, P::PseudoTree{T}, s) where T 
+function set_contexts!(H::Hypergraph{T}, P::PseudoTree{T}, s) where T
     for var in P.vars
         full_ctx = get_context(H, P, var)
         P.context[var] = split_context(H, P, full_ctx, s)
@@ -469,7 +496,7 @@ end
 
 # Assuming contexts have already been set, compute the minimum relevant variables set.
 function compute_min_max_RV_width(H::Hypergraph{T}, P::PseudoTree{T}) where T
-    # Compute the possible variable covers for each variable 
+    # Compute the possible variable covers for each variable
     potential_var_covers = Dict{T, Set{Union{T, Nothing}}}()
     for var in P.vars
         potential_var_covers[var] = Set{T}()
@@ -480,7 +507,7 @@ function compute_min_max_RV_width(H::Hypergraph{T}, P::PseudoTree{T}) where T
         end
         # Any ancestor whose context covers the I variables of 'var' is a valid cover
         for ancestor in P.ancestors[var]
-            if ∪(P.context[ancestor].I, P.context[ancestor].S, [ancestor]) ⊇ P.context[var].I 
+            if ∪(P.context[ancestor].I, P.context[ancestor].S, [ancestor]) ⊇ P.context[var].I
                 push!(potential_var_covers[var], ancestor)
             end
         end
