@@ -131,7 +131,7 @@ fhtdw_1 = 2.0
 =#
 
 # To Camillo: You can try out different query graphs by changing this function.
-H = Hypergraph([:A, :B, :C, :D, :E, :F, :G, :H, :F2, :G2, :H2,], 
+H = Hypergraph([:A, :B, :C, :D, :E, :F, :G, :H, :I, :J, :K], 
                  [[:A, :B], 
                  [:A, :C], 
                  [:A, :D], 
@@ -149,25 +149,31 @@ H = Hypergraph([:A, :B, :C, :D, :E, :F, :G, :H, :F2, :G2, :H2,],
                  [:F, :G], 
                  [:F, :H], 
                  [:G, :H], 
-                 [:H, :F2], 
-                 [:H, :G2], 
-                 [:G, :F2], 
-                 [:G, :G2], 
-                 [:G, :H2], 
-                 [:F2, :G2], 
-                 [:F2, :H2], 
-                 [:G2, :H2], 
+                 [:G, :I], 
+                 [:G, :J], 
+                 [:H, :I], 
+                 [:H, :J], 
+                 [:H, :K],  
+                 [:I, :J], 
+                 [:I, :K], 
+                 [:J, :K], 
                   ])
- 
+
+#= 
+H = Hypergraph([:A, :B, :C], 
+                [[:A, :B], 
+                [:B, :C], 
+                ]) =#
+
 # This is constant-space pseudo-tree depth
-@show(H)
-ptd = fractional_hypertree_depth(H)
-@show(ptd)
+#@show(H)
+#ptd = fractional_hypertree_depth(H)
+#@show(ptd)
 
 # This is traditional fhtw with no space constraint. It's a bit slow, so fair warning.
-@show(H)
-fhtw = fractional_hypertree_width(H)
-@show(fhtw)
+#@show(H)
+#fhtw = fractional_hypertree_width(H)
+#@show(fhtw)
 
 # This is pseudo-tree depth with caching & resets
 @show(H)
@@ -175,9 +181,9 @@ fhtwc_1 = fractional_hypertree_depth_with_caching(H, 1)
 @show(fhtwc_1)
 
 # This is pseudo-tree depth without caching & resets + an outer hypertree decomposition w/ bounded separators (i.e. HTD[PT]). It can also be slow.
-@show(H)
-fhtdw_1 = fractional_hypertree_depth_width(H, 1)
-@show(fhtdw_1)
+#@show(H)
+#fhtdw_1 = fractional_hypertree_depth_width(H, 1)
+#@show(fhtdw_1)
 
 #= @show(H)
 fhtwc_2 = fractional_hypertree_depth_with_caching(H, 2)
