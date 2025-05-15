@@ -131,7 +131,7 @@ fhtdw_1 = 2.0
 =#
 
 # To Camillo: You can try out different query graphs by changing this function.
-H = Hypergraph([:A, :B, :C, :D, :E, :F, :G, :H, :I, :J, :K], 
+H = Hypergraph([:A, :B, :C, :D, :E, :F, :G, :H, :I, :J, :K, :L], 
                  [[:A, :B], 
                  [:A, :C], 
                  [:A, :D], 
@@ -142,7 +142,7 @@ H = Hypergraph([:A, :B, :C, :D, :E, :F, :G, :H, :I, :J, :K],
                  [:C, :E], 
                  [:D, :E], 
                  [:D, :F], 
-                 [:D, :G], 
+                 [:D, :H], 
                  [:E, :F], 
                  [:E, :G], 
                  [:E, :H], 
@@ -151,13 +151,26 @@ H = Hypergraph([:A, :B, :C, :D, :E, :F, :G, :H, :I, :J, :K],
                  [:G, :H], 
                  [:G, :I], 
                  [:G, :J], 
+                 [:G, :K], 
                  [:H, :I], 
-                 [:H, :J], 
                  [:H, :K],  
                  [:I, :J], 
                  [:I, :K], 
                  [:J, :K], 
+                 [:L, :A], 
+                 [:L, :B], 
+                 [:L, :C], 
+                 [:L, :D], 
+                 [:L, :E], 
+                 [:L, :F], 
+                 [:L, :G], 
+                 [:L, :H], 
+                 [:L, :I], 
+                 [:L, :J], 
+                 [:L, :K], 
                   ])
+#Confirmed: 
+#fhtwc_1 = 2.5
 
 #= 
 H = Hypergraph([:A, :B, :C], 

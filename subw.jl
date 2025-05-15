@@ -550,15 +550,14 @@ function compute_min_max_RV_width2(H::Hypergraph{T}, P::PseudoTree{T}) where T
                 var_cover[(A, B)] = ∩(∪(P.ancestors[A], [A]), ∪(P.context[B].I, P.context[B].S, [B]))
                 shared_anc = ∩(∪(P.ancestors[A], [A]), P.context[B].I)
                 if !isempty(shared_anc)
-                    recent_shared_anc = argmin((v)->P.depth[v], shared_anc)
+                    recent_shared_anc = argmax((v)->P.depth[v], shared_anc)
                     var_cover[(A, B)] = var_cover[(A, B)] ∪ var_cover[(recent_shared_anc, P.parent[B])]
                 end
             end
         end
     end
+
     relevant_vars = Dict{T, Vector{T}}(A=>var_cover[(A, A)] for A in P.vars)
-#    println("Var Cover: ", var_cover)
-#    println("Relevant Vars: ", relevant_vars)
     rv_width = maximum([fractional_edge_cover(H, rvs) for rvs in values(relevant_vars)])
     return rv_width, var_cover
 end
@@ -611,6 +610,9 @@ function fractional_hypertree_depth_with_caching(H::Hypergraph{T}, s, verbose=tr
             min_pseudotree = thread_min_pseudotrees[i]
         end
     end
+    println("Parent Cost: $minimum_depth")
+    println("Parent Pseudotree: $min_pseudotree")
+    println("Parent Var Cover: $min_var_cover")
     parent_cost = minimum_depth
 
 
