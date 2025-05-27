@@ -15,7 +15,7 @@ using DataStructures
 using IterTools
 
 export Hypergraph, FD, fractional_edge_cover, fractional_hypertree_width, submodular_width,
-    get_tds, get_trivial_tds, PseudoTree, valid_extensions, add_leaf!, enumerate_pseudotrees, fractional_hypertree_depth, fractional_hypertree_depth_with_caching,
+    get_tds, get_trivial_tds, PseudoTree, valid_extensions, add_leaf!, enumerate_pseudotrees, pt_time, ptcr_time,
     fractional_hypertree_depth_width
 
 """
@@ -432,24 +432,24 @@ end
 
 
 """
-    fractional_hypertree_depth(H, [verbose])
+    pt_time(H, [verbose])
 
-Compute the fractional hypertree depth of hypergraph 'H'.
+Compute the optimal pseudo-tree runtime for the query hypergraph 'H'.
 
 """
 
-function fractional_hypertree_depth(H::Hypergraph{T}, P::PseudoTree{T}) where T
+function pt_time(H::Hypergraph{T}, P::PseudoTree{T}) where T
     leaves = [v for v in P.vars if length(P.children[v]) == 0]
     branches = [∪(P.ancestors[v], [v]) for v in leaves]
     branch_depths = [fractional_edge_cover(H, collect(branch)) for branch in branches]
     return maximum(branch_depths; init = 0)
 end
 
-function fractional_hypertree_depth(H::Hypergraph{T}, verbose=true) where T
-    parent_pseudotrees = enumerate_pseudotrees(H, Inf, fractional_hypertree_depth, true, verbose)
-    parent_cost = minimum([fractional_hypertree_depth(H, P) for P in parent_pseudotrees]; init = Inf)
-    all_pseudotrees = enumerate_pseudotrees(H, parent_cost, fractional_hypertree_depth, false, verbose)
-    return min(parent_cost, minimum([fractional_hypertree_depth(H, P) for P in all_pseudotrees]; init = Inf))
+function pt_time(H::Hypergraph{T}, verbose=true) where T
+    parent_pseudotrees = enumerate_pseudotrees(H, Inf, pt_time, true, verbose)
+    parent_cost = minimum([pt_time(H, P) for P in parent_pseudotrees]; init = Inf)
+    all_pseudotrees = enumerate_pseudotrees(H, parent_cost, pt_time, false, verbose)
+    return min(parent_cost, minimum([pt_time(H, P) for P in all_pseudotrees]; init = Inf))
 end
 
 
@@ -541,7 +541,6 @@ end
 
 # Assuming contexts have already been set, compute the minimum relevant variables set.
 function compute_min_max_RV_width2(H::Hypergraph{T}, P::PseudoTree{T}) where T
-
     var_cover = Dict{Tuple{T,T}, Vector{T}}()
     for depth in 1:max(values(P.depth)...)
         cur_gen = [var for var in P.vars if P.depth[var] == depth]
@@ -563,20 +562,20 @@ function compute_min_max_RV_width2(H::Hypergraph{T}, P::PseudoTree{T}) where T
 end
 
 """
-    fractional_hypertree_depth_with_caching(H, s, [verbose])
+    ptcr_time(H, s, [verbose])
 
 Compute the fractional hypertree depth of hypergraph 'H'.
 
 """
-function fractional_hypertree_depth_with_caching(H::Hypergraph{T}, P::PseudoTree{T}, s) where T
+function ptcr_time(H::Hypergraph{T}, P::PseudoTree{T}, s) where T
     set_contexts!(H, P, s)
     min_RV_width, relevant_vars = compute_min_max_RV_width2(H, P)
     return min_RV_width, relevant_vars, P
 end
 
-function fractional_hypertree_depth_with_caching(H::Hypergraph{T}, s, verbose=true) where T
+function ptcr_time(H::Hypergraph{T}, s, verbose=true) where T
 
-    parent_pseudotrees = enumerate_pseudotrees(H, Inf, (H, P)->fractional_hypertree_depth_with_caching(H, P, s)[1], true, verbose)
+    parent_pseudotrees = enumerate_pseudotrees(H, Inf, (H, P)->ptcr_time(H, P, s)[1], true, verbose)
     println("ENUMERATED PSEUDOTREES: ", length(parent_pseudotrees))
     nthreads = Threads.nthreads()
     println("N Threads: $nthreads")
@@ -592,7 +591,7 @@ function fractional_hypertree_depth_with_caching(H::Hypergraph{T}, s, verbose=tr
             println(float(count)/length(parent_pseudotrees), "% done")
         end
         # Update this thread's local minimum safely
-        min_RV_width, best_var_cover, P = fractional_hypertree_depth_with_caching(H, P, s)
+        min_RV_width, best_var_cover, P = ptcr_time(H, P, s)
         if min_RV_width < thread_minimum_depths[thread_id]
             thread_minimum_depths[thread_id] = min_RV_width
             thread_min_var_covers[thread_id] = best_var_cover
@@ -617,7 +616,7 @@ function fractional_hypertree_depth_with_caching(H::Hypergraph{T}, s, verbose=tr
 
 
     println("Starting 2nd PseudoTree Search")
-    all_pseudotrees = enumerate_pseudotrees(H, parent_cost, (H, P)->fractional_hypertree_depth_with_caching(H, P, s)[1], false, verbose)
+    all_pseudotrees = enumerate_pseudotrees(H, parent_cost, (H, P)->ptcr_time(H, P, s)[1], false, verbose)
     println("ENUMERATED PSEUDOTREES: ", length(all_pseudotrees))
 
     count = 0
@@ -631,7 +630,7 @@ function fractional_hypertree_depth_with_caching(H::Hypergraph{T}, s, verbose=tr
             println(float(count)/length(all_pseudotrees), "% done")
         end
         # Update this thread's local minimum safely
-        min_RV_width, best_var_cover, P = fractional_hypertree_depth_with_caching(H, P, s)
+        min_RV_width, best_var_cover, P = ptcr_time(H, P, s)
         if min_RV_width < thread_minimum_depths[thread_id]
             thread_minimum_depths[thread_id] = min_RV_width
             thread_min_var_covers[thread_id] = best_var_cover
@@ -705,7 +704,7 @@ function fractional_hypertree_depth_width(
             continue
         end
         # let `w` be the maximum fractional edge cover number among bags of `td`
-        w = maximum(fractional_hypertree_depth(induced_hyper_subgraph(H, collect(bag))) for bag in td; init = 0.0)
+        w = maximum(pt_time(induced_hyper_subgraph(H, collect(bag))) for bag in td; init = 0.0)
         # find a `td` minimizing `w`; break ties by taking the `td` with the smallest
         # number of bags
         if w < fhtw - 1e-6 || abs(w-fhtw) <= 1e-6 && length(td) < length(H.tds[best_td])
