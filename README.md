@@ -1,11 +1,9 @@
-# submodular-width
-Tools to compute the _submodular width_. See [this paper](https://www.cs.bme.hu/~dmarx/papers/marx-csp-jacm.pdf) and [this](https://arxiv.org/abs/1612.02503).
-
+This repository is a fork of [https://github.com/mabokhamis/submodular-width](https://github.com/mabokhamis/submodular-width). The previous repository contains code for computing classical width measures like fractional hypertree width and submodular width. This repository adds additional measures that adapt to asymptotic space constraints.
 
 # Usage
 
-The easiest way to use this script is to call the test_graph script with:
+To reproduce the results from the paper, you need to install the julia programming language. Then, you can simply run :
 ```
-julia --project=. --threads 12 test_graph.jl 
+julia --project=. --threads 12 figure_examples.jl 
 ```
-You can modify the test_graph script to try out different query graphs.
+To try out different query graphs, you can modify the hypergraphs defined in this script.

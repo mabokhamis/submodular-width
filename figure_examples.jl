@@ -1,6 +1,8 @@
 include("subw.jl")
+include("space-constrained-width.jl")
 
 using .HypergraphWidths
+using .SpaceConstrainedWidths
 
 println(repeat("=", 80))
 
@@ -23,10 +25,9 @@ H = Hypergraph([:A, :B, :C, :D, :E, :F],
 ])
 
 @show(H)
-pt_ex_4 = pt_time(H, 1)
+pt_ex_4 = pt_time(H)
 @show(pt_ex_4)
 
-@show(H)
 ptcr_1_ex_4 = ptcr_time(H, 1)
 @show(ptcr_1_ex_4)
 
@@ -61,7 +62,7 @@ H = Hypergraph([:A, :B, :C, :D, :E, :F, :G, :H, :I, :J, :K],
 
 
 @show(H)
-pt_ex_5 = pt_time(H, 1)
+pt_ex_5 = pt_time(H)
 @show(pt_ex_5)
 
 ptcr_1_ex_5 = ptcr_time(H, 1)
@@ -113,7 +114,7 @@ H = Hypergraph([:A, :B, :C, :D, :E, :F, :G, :H, :I, :J, :K, :L],
 ])
 
 @show(H)
-pt_ex_6 = pt_time(H, 1)
+pt_ex_6 = pt_time(H)
 @show(pt_ex_6)
 
 ptcr_1_ex_6 = ptcr_time(H, 1)
