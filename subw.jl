@@ -347,7 +347,7 @@ function submodular_width(
     # combination of bags `(bag1, bag2, ⋯, bag_k)` where `bag1 ∈ td1, bag2 ∈ td2, …,`
     # `bag_k ∈ td_k` and take the maximum value across all such combinations.
     initialize_tds_if_missing(H)
-    selectors = _get_bag_selectors(H.tds)
+    selectors = _get_bag_selectors(H.tds; verbose)
     # selectors = Iterators.product(H.tds...,)
     println("    Final number of bag selectors: $(length(selectors))")
     counter = 0
@@ -635,15 +635,15 @@ end
 Given a list of tree decompositions `tds`, return all possible bag selectors (not including
 subsumed ones).
 """
-function _get_bag_selectors(tds::Vector{Vector{Set{T}}}) where T
+function _get_bag_selectors(tds::Vector{Vector{Set{T}}}; verbose::Bool = false) where T
     selectors = [[bag1] for bag1 ∈ first(tds)]
-    println("    Number of TDs: $(length(tds))")
-    println("        Creating bag selectors for TD 1/$(length(tds))")
-    println("            Number of bag selectors so far: $(length(selectors))")
+    verbose && println("    Number of TDs: $(length(tds))")
+    verbose && println("        Creating bag selectors for TD 1/$(length(tds))")
+    verbose && println("            Number of bag selectors so far: $(length(selectors))")
     for i = 2:length(tds)
-        println("        Creating bag selectors for TD $i/$(length(tds))")
+        verbose && println("        Creating bag selectors for TD $i/$(length(tds))")
         selectors = _extend_bag_selectors(selectors, tds[i])
-        println("            Number of bag selectors so far: $(length(selectors))")
+        verbose && println("            Number of bag selectors so far: $(length(selectors))")
     end
     return selectors
 end

@@ -36,7 +36,7 @@ function get_multivariate_extension(H::Hypergraph{T}, Z::Vector{T}) where T
         edges = map(edge -> collect(edge), edges)
         push!(E, Hypergraph(H.vars ∪ Z[2:end-1], edges))
     end
-    return E
+    return isomorphically_unique(E)
 end
 
 function HypergraphWidths.fractional_hypertree_width(E::Vector{Hypergraph{T}}) where T
@@ -139,15 +139,15 @@ function test_all()
     test_2path_with_endpoints()
 end
 
-H = Hypergraph(
-    [:A, :B, :C, :D, :E, :F],
-    [[:A, :B], [:B, :C], [:C, :D], [:D, :E], [:E, :F], [:F, :A]],
-)
+# H = Hypergraph(
+#     [:A, :B, :C, :D, :E, :F],
+#     [[:A, :B], [:B, :C], [:C, :D], [:D, :E], [:E, :F], [:F, :A]],
+# )
 
-E = get_multivariate_extension(H, [:Z1, :Z2, :Z3, :Z4, :Z5, :Z6])
-println(length(E))
-println(length(Set{UInt64}(isomorphic_hash(h) for h in E)))
-
-println(E[1])
+# E = get_multivariate_extension(H, [:Z1, :Z2, :Z3, :Z4, :Z5, :Z6])
+# for (i, H) in enumerate(E)
+#     println("Extension $i/$(length(E)):\n$H\n")
+#     println("    SUBW: $(submodular_width(H))")
+# end
 
 end
