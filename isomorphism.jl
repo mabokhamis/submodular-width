@@ -4,7 +4,7 @@ using Combinatorics
 
 using ..HypergraphWidths
 
-export isomorphic_hash
+export isomorphic_hash, are_isomorphic, isomorphically_unique
 
 function _hash(x::Vector{Vector{UInt64}})::UInt64
     y = map(v -> Base.hash(sort(v)), x)
@@ -66,17 +66,36 @@ function are_isomorphic(H1::Hypergraph{T}, H2::Hypergraph{T}) where T
         append!(vars1, collect(rev1[k]))
         push!(vars2, collect(rev2[k]))
     end
-    @show(vars1)
     perm2 = Iterators.product(map(vs -> permutations(vs), vars2)...)
-    for p in perm2
-        vars2 = vcat(p...)
-        @show(vars2)
-    end
     for p in perm2
         vars2 = vcat(p...)
         _are_isomorphic(H1, H2, vars1, vars2) && return true
     end
     return false
+end
+
+function isomorphically_unique(H::Vector{Hypergraph{T}}) where T
+    map = Dict{UInt64, Set{Hypergraph{T}}}()
+    for G in H
+        h = isomorphic_hash(G)[1]
+        @assert h isa UInt64
+        if !haskey(map, h)
+            map[h] = Set{Hypergraph{T}}()
+        end
+        is_new = true
+        for G2 in map[h]
+            if are_isomorphic(G, G2)
+                is_new = false
+                break
+            end
+        end
+        is_new && push!(map[h], G)
+    end
+    U = Hypergraph{T}[]
+    for (_, GG) in map, G in GG
+        push!(U, G)
+    end
+    return U
 end
 
 function _are_isomorphic(
@@ -132,6 +151,7 @@ function test_isomorphism_hash1()
     @assert !are_isomorphic(H1, H4)
     @assert !are_isomorphic(H3, H4)
     @assert are_isomorphic(H4, H5)
+    @assert length(isomorphically_unique([H1, H2, H3, H4, H5])) == 3
 end
 
 function test_all()
