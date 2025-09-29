@@ -10,6 +10,7 @@ module MultivariateExtensions
 using Combinatorics
 
 using ..HypergraphWidths
+using ..Isomorphism
 
 """
     get_multivariate_extension(H, Z)
@@ -40,13 +41,11 @@ end
 
 function HypergraphWidths.fractional_hypertree_width(E::Vector{Hypergraph{T}}) where T
     m = 0.0
-    witness_reported = false
     println("    Computing fractional hypertree Width of multivariate extensions:")
     for (i, H) in enumerate(E)
         w = fractional_hypertree_width(H)
-        if abs(w - 2.0) < 1e-6 && !witness_reported
-            @warn "$H"
-            witness_reported = true
+        if w < m - 1e-6
+            @warn "New Hypergraph found:\n$H\nwith width $w < $m"
         end
         m = max(m, w)
         println("        Extension $i/$(length(E)): FHTW so far: $m")
@@ -56,13 +55,11 @@ end
 
 function HypergraphWidths.submodular_width(E::Vector{Hypergraph{T}}) where T
     m = 0.0
-    witness_reported = false
     println("    Computing submodular width of multivariate extensions:")
     for (i, H) in enumerate(E)
         w = submodular_width(H)
-        if abs(w - 2.0) < 1e-6 && !witness_reported
-            @warn "$H"
-            witness_reported = true
+        if w < m - 1e-6
+            @warn "New Hypergraph found:\n$H\nwith width $w < $m"
         end
         m = max(m, w)
         println("        Extension $i/$(length(E)): SUBW so far: $m")
@@ -141,5 +138,16 @@ function test_all()
     test_bowtie()
     test_2path_with_endpoints()
 end
+
+H = Hypergraph(
+    [:A, :B, :C, :D, :E, :F],
+    [[:A, :B], [:B, :C], [:C, :D], [:D, :E], [:E, :F], [:F, :A]],
+)
+
+E = get_multivariate_extension(H, [:Z1, :Z2, :Z3, :Z4, :Z5, :Z6])
+println(length(E))
+println(length(Set{UInt64}(isomorphic_hash(h) for h in E)))
+
+println(E[1])
 
 end
