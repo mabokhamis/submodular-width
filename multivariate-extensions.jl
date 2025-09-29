@@ -139,15 +139,32 @@ function test_all()
     test_2path_with_endpoints()
 end
 
+H = Hypergraph(
+    [:A, :B, :C, :D, :E],
+    [[:A, :B], [:B, :C], [:C, :D], [:D, :E], [:E, :A]],
+)
+
 # H = Hypergraph(
 #     [:A, :B, :C, :D, :E, :F],
 #     [[:A, :B], [:B, :C], [:C, :D], [:D, :E], [:E, :F], [:F, :A]],
 # )
 
-# E = get_multivariate_extension(H, [:Z1, :Z2, :Z3, :Z4, :Z5, :Z6])
-# for (i, H) in enumerate(E)
-#     println("Extension $i/$(length(E)):\n$H\n")
-#     println("    SUBW: $(submodular_width(H))")
-# end
+query_name = "5cycle"
+
+io = open("$(query_name).jl", "w")
+println(io, "using ..HypergraphWidths")
+println(io, "io = open(\"$(query_name).log\", \"a\")")
+println(io, "println(io, repeat(\"#\", 80))")
+
+E = get_multivariate_extension(H, [:Z1, :Z2, :Z3, :Z4, :Z5])
+for (i, H) in enumerate(E)
+    println(io, repeat("#", 80))
+    println(io, "# Extension $i/$(length(E)):")
+    println(io, "H = $(H)")
+    println(io, "print(io, \"$i/$(length(E)): \t\")\nprintln(io, submodular_width(H))")
+    println(io, "flush(io)")
+end
+println(io, "close(io)")
+close(io)
 
 end

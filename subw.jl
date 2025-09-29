@@ -102,11 +102,21 @@ function Base.copy(H::Hypergraph{T}) where T
 end
 
 function Base.show(io::IO, H::Hypergraph{T}) where T
-    println(io, "Hypergraph with vertices: ", H.vars)
-    println(io, "    and hyperedges:")
-    for (i, edge) ∈ enumerate(H.edges)
-        println(io, "        ", sort(collect(edge)), " with weight $(H.weights[i])")
+    print(io, """
+    Hypergraph(
+        $(H.vars),
+        [
+    """
+    )
+    for e in H.edges
+        println(io, "        $(sort(collect(e))),")
     end
+    println(io, """
+        ];
+        weights = $(H.weights)
+    )
+    """
+    )
 end
 
 # if the TDs are missing in the hypergraph, initize them to contain all possible TDs
@@ -349,7 +359,7 @@ function submodular_width(
     initialize_tds_if_missing(H)
     selectors = _get_bag_selectors(H.tds; verbose)
     # selectors = Iterators.product(H.tds...,)
-    println("    Final number of bag selectors: $(length(selectors))")
+    verbose && println("    Final number of bag selectors: $(length(selectors))")
     counter = 0
     for β in selectors
         counter += 1
