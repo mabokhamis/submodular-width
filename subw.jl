@@ -14,7 +14,7 @@ using Combinatorics
 using DataStructures
 
 export Hypergraph, FD, fractional_edge_cover, fractional_hypertree_width, submodular_width,
-    get_tds, get_trivial_tds
+    get_tds, get_trivial_tds, simplify_hypergraph
 
 """
     Hypergraph{T}

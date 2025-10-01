@@ -68,7 +68,7 @@ function are_isomorphic(H1::Hypergraph{T}, H2::Hypergraph{T}) where T
     end
     perm2 = Iterators.product(map(vs -> permutations(vs), vars2)...)
     for p in perm2
-        vars2 = vcat(p...)
+        vars2 = Vector{T}(vcat(p...))
         _are_isomorphic(H1, H2, vars1, vars2) && return true
     end
     return false
