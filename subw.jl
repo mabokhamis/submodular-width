@@ -706,7 +706,7 @@ function simplify_hypergraph(H::Hypergraph{T}) where T
     """
     Hs = Base.copy(H)
     changed = true
-    while changed && length(H.vars) > 1
+    while changed && length(Hs.vars) > 1
         Hs, changed = _one_simplification_step(Hs)
     end
     return Hs
