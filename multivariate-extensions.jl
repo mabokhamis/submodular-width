@@ -141,18 +141,18 @@ function test_all()
 end
 
 H = Hypergraph(
-    [:A, :B, :C, :D, :E, :F],
-    [[:A, :B], [:B, :C], [:C, :D], [:D, :E], [:E, :F]],
+    [:A, :B, :C, :D, :E, :F, :G],
+    [[:A, :B], [:B, :C], [:C, :D], [:D, :E], [:E, :F], [:F, :G]],
 )
 
-query_name = "5path"
+query_name = "6path"
 
 io = open("$(query_name).jl", "w")
 println(io, "using ..HypergraphWidths")
 println(io, "io = open(\"$(query_name).log\", \"a\")")
 println(io, "println(io, repeat(\"#\", 80))")
 
-E = get_multivariate_extension(H, [:Z1, :Z2, :Z3, :Z4, :Z5])
+E = get_multivariate_extension(H, [:Z1, :Z2, :Z3, :Z4, :Z5, :Z6])
 for (i, H) in enumerate(E)
     println(io, repeat("#", 80))
     println(io, "# Extension $i/$(length(E)):")
