@@ -686,6 +686,72 @@ function polymatroid_bound(
     return submodular_width(H; fds, dcs, verbose)
 end
 
+"""
+    simplify_hypergraph(H)
+
+Repeatedly apply the following simplification rules to hypergraph `H` until no further
+simplifications can be made:
+ - Rule 1: Remove a "private vertex" (i.e. a vertex that appears in only one hyperedge)
+ - Rule 2: Remove a "universal vertex" (i.e. a vertex that appears in all hyperedges)
+ - Rule 3: Remove a "subsumed hyperedge" (i.e. a hyperedge that is contained in another
+   hyperedge)
+
+*NOTE* All the above three rules preserve both the fractional hypertree width and the
+submodular width of the hypergraph, assuming all hyperedges have weight 1.0 and there are no
+other FDs or DCs involved.
+"""
+function simplify_hypergraph(H::Hypergraph{T}) where T
+    @assert all(w == 1.0 for w in H.weights) """
+    `simplify_hypergraph` only works for hypergraphs with unit weights
+    """
+    Hs = Base.copy(H)
+    changed = true
+    while changed && length(H.vars) > 1
+        Hs, changed = _one_simplification_step(Hs)
+    end
+    return Hs
+end
+
+function _one_simplification_step(H::Hypergraph{T}) where T
+    counts = Dict{T, Int}(v => 0 for v in H.vars)
+    for edge in H.edges, v in edge
+        counts[v] += 1
+    end
+    for (v, c) in counts
+        if c == 1 || c == length(H.edges)
+            return _remove_vertex(H, v), true
+        end
+    end
+    return _remove_subsumed_edges(H)
+end
+
+function _remove_vertex(H::Hypergraph{T}, v::T) where T
+    new_vars = T[u for u in H.vars if u != v]
+    new_edges = Set{Set{T}}()
+    for edge in H.edges
+        new_edge = Set{T}(u for u in edge if u != v)
+        !isempty(new_edge) && push!(new_edges, new_edge)
+    end
+    return Hypergraph(new_vars, collect(new_edges))
+end
+
+function _remove_subsumed_edges(H::Hypergraph{T}) where T
+    to_remove = Set{Int}()
+    for (i, ei) in enumerate(H.edges)
+        is_subsumed = false
+        for (j, ej) in enumerate(H.edges)
+            if j != i && ei ⊆ ej && (ei != ej || i > j)
+                is_subsumed = true
+                break
+            end
+        end
+        is_subsumed && push!(to_remove, i)
+    end
+    isempty(to_remove) && return H, false
+    new_edges = [ei for (i, ei) in enumerate(H.edges) if i ∉ to_remove]
+    return Hypergraph(H.vars, new_edges), true
+end
+
 #==========================================================================================#
 # Testcases:
 # ----------
@@ -937,6 +1003,16 @@ function test_polymatroid_bound2()
     @assert pb ≈ 36/2  # (10 + 11 + 12 + 3 + 0) / 2
 end
 
+function test_simplify_hypergraph()
+    H = Hypergraph(
+        [:A, :B, :C, :D, :E, :F],
+        [[:A, :B, :F], [:B, :C, :F], [:C, :A, :F], [:C, :D], [:D, :E], [:D, :E], [:A, :B]],
+    )
+    G = simplify_hypergraph(H)
+    @assert Set(G.vars) == Set([:A, :B, :C])
+    @assert Set(Set(e) for e in G.edges) == Set([Set([:A, :B]), Set([:B, :C]), Set([:C, :A])])
+end
+
 # Run all tests
 function test_all()
     test_4cycle()
@@ -949,6 +1025,7 @@ function test_all()
     test_polymatroid_bound1()
     test_polymatroid_bound1_variant()
     test_polymatroid_bound2()
+    test_simplify_hypergraph()
 end
 
 end

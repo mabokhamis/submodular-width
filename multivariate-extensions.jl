@@ -34,7 +34,8 @@ function get_multivariate_extension(H::Hypergraph{T}, Z::Vector{T}) where T
             union!(edges[k], Z[2:min(i, m-1)])
         end
         edges = map(edge -> collect(edge), edges)
-        push!(E, Hypergraph(H.vars ∪ Z[2:end-1], edges))
+        G = Hypergraph(H.vars ∪ Z[2:end-1], edges)
+        push!(E, simplify_hypergraph(G))
     end
     return isomorphically_unique(E)
 end
@@ -139,27 +140,27 @@ function test_all()
     test_2path_with_endpoints()
 end
 
-H = Hypergraph(
-    [:A, :B, :C, :D, :E, :F, :G],
-    [[:A, :B], [:B, :C], [:C, :D], [:D, :E], [:E, :F], [:F, :G]],
-)
+# H = Hypergraph(
+#     [:A, :B, :C, :D, :E, :F, :G],
+#     [[:A, :B], [:B, :C], [:C, :D], [:D, :E], [:E, :F], [:F, :G]],
+# )
 
-query_name = "6path"
+# query_name = "6path"
 
-io = open("$(query_name).jl", "w")
-println(io, "using ..HypergraphWidths")
-println(io, "io = open(\"$(query_name).log\", \"a\")")
-println(io, "println(io, repeat(\"#\", 80))")
+# io = open("$(query_name).jl", "w")
+# println(io, "using ..HypergraphWidths")
+# println(io, "io = open(\"$(query_name).log\", \"a\")")
+# println(io, "println(io, repeat(\"#\", 80))")
 
-E = get_multivariate_extension(H, [:Z1, :Z2, :Z3, :Z4, :Z5, :Z6])
-for (i, H) in enumerate(E)
-    println(io, repeat("#", 80))
-    println(io, "# Extension $i/$(length(E)):")
-    println(io, "H = $(H)")
-    println(io, "print(io, \"$i/$(length(E)): \t\")\nprintln(io, submodular_width(H))")
-    println(io, "flush(io)")
-end
-println(io, "close(io)")
-close(io)
+# E = get_multivariate_extension(H, [:Z1, :Z2, :Z3, :Z4, :Z5, :Z6])
+# for (i, H) in enumerate(E)
+#     println(io, repeat("#", 80))
+#     println(io, "# Extension $i/$(length(E)):")
+#     println(io, "H = $(H)")
+#     println(io, "print(io, \"$i/$(length(E)): \t\")\nprintln(io, submodular_width(H))")
+#     println(io, "flush(io)")
+# end
+# println(io, "close(io)")
+# close(io)
 
 end
