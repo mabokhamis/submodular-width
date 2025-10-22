@@ -1038,8 +1038,8 @@ function test_wagner_graph()
         ]
     )
 
-    println(fractional_hypertree_width(H))
-    println(submodular_width(H))
+    println(fractional_hypertree_width(H))  # 3.0
+    # println(submodular_width(H))          # ???
 end
 
 function test_pentagonal_prism()
@@ -1053,8 +1053,8 @@ function test_pentagonal_prism()
         ];
     )
 
-    println(fractional_hypertree_width(H))
-    println(submodular_width(H))
+    println(fractional_hypertree_width(H))  # 2.0
+    # println(submodular_width(H))          # ???
 end
 
 end
