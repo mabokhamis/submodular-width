@@ -1030,20 +1030,6 @@ end
 
 function test_wagner_graph()
     H = Hypergraph(
-        [:A1, :A2, :A3, :A4, :A5, :B1, :B2, :B3, :B4, :B5],
-        [
-            [:A1, :A2], [:A2, :A3], [:A3, :A4], [:A4, :A5], [:A5, :A1],
-            [:B1, :B2], [:B2, :B3], [:B3, :B4], [:B4, :B5], [:B5, :B1],
-            [:A1, :B1], [:A2, :B2], [:A3, :B3], [:A4, :B4], [:A5, :B5]
-        ]
-    )
-
-    println(fractional_hypertree_width(H))  # 3.0
-    # println(submodular_width(H))          # ???
-end
-
-function test_pentagonal_prism()
-    H = Hypergraph(
         [:A1, :A2, :A3, :A4, :A5, :A6, :A7, :A8, :B],
         [
             [:A1, :B], [:A2, :B], [:A3, :B], [:A4, :B],
@@ -1054,6 +1040,20 @@ function test_pentagonal_prism()
     )
 
     println(fractional_hypertree_width(H))  # 2.0
+    # println(submodular_width(H))          # ???
+end
+
+function test_pentagonal_prism()
+    H = Hypergraph(
+        [:A1, :A2, :A3, :A4, :A5, :B1, :B2, :B3, :B4, :B5],
+        [
+            [:A1, :A2], [:A2, :A3], [:A3, :A4], [:A4, :A5], [:A5, :A1],
+            [:B1, :B2], [:B2, :B3], [:B3, :B4], [:B4, :B5], [:B5, :B1],
+            [:A1, :B1], [:A2, :B2], [:A3, :B3], [:A4, :B4], [:A5, :B5]
+        ]
+    )
+
+    println(fractional_hypertree_width(H))  # 3.0
     # println(submodular_width(H))          # ???
 end
 
