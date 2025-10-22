@@ -359,7 +359,7 @@ function submodular_width(
     initialize_tds_if_missing(H)
     selectors = _get_bag_selectors(H.tds; verbose)
     # selectors = Iterators.product(H.tds...,)
-    verbose && println("    Final number of bag selectors: $(length(selectors))")
+    println("    Final number of bag selectors: $(length(selectors))")
     counter = 0
     for β in selectors
         counter += 1
@@ -647,13 +647,13 @@ subsumed ones).
 """
 function _get_bag_selectors(tds::Vector{Vector{Set{T}}}; verbose::Bool = false) where T
     selectors = [[bag1] for bag1 ∈ first(tds)]
-    verbose && println("    Number of TDs: $(length(tds))")
-    verbose && println("        Creating bag selectors for TD 1/$(length(tds))")
-    verbose && println("            Number of bag selectors so far: $(length(selectors))")
+    println("    Number of TDs: $(length(tds))")
+    println("        Creating bag selectors for TD 1/$(length(tds))")
+    println("            Number of bag selectors so far: $(length(selectors))")
     for i = 2:length(tds)
-        verbose && println("        Creating bag selectors for TD $i/$(length(tds))")
+        println("        Creating bag selectors for TD $i/$(length(tds))")
         selectors = _extend_bag_selectors(selectors, tds[i])
-        verbose && println("            Number of bag selectors so far: $(length(selectors))")
+        println("            Number of bag selectors so far: $(length(selectors))")
     end
     return selectors
 end
@@ -1026,6 +1026,35 @@ function test_all()
     test_polymatroid_bound1_variant()
     test_polymatroid_bound2()
     test_simplify_hypergraph()
+end
+
+function test_wagner_graph()
+    H = Hypergraph(
+        [:A1, :A2, :A3, :A4, :A5, :B1, :B2, :B3, :B4, :B5],
+        [
+            [:A1, :A2], [:A2, :A3], [:A3, :A4], [:A4, :A5], [:A5, :A1],
+            [:B1, :B2], [:B2, :B3], [:B3, :B4], [:B4, :B5], [:B5, :B1],
+            [:A1, :B1], [:A2, :B2], [:A3, :B3], [:A4, :B4], [:A5, :B5]
+        ]
+    )
+
+    println(fractional_hypertree_width(H))
+    println(submodular_width(H))
+end
+
+function test_pentagonal_prism()
+    H = Hypergraph(
+        [:A1, :A2, :A3, :A4, :A5, :A6, :A7, :A8, :B],
+        [
+            [:A1, :B], [:A2, :B], [:A3, :B], [:A4, :B],
+            [:A5, :B], [:A6, :B], [:A7, :B], [:A8, :B],
+            [:A1, :A2], [:A2, :A3], [:A3, :A4], [:A4, :A5],
+            [:A5, :A6], [:A6, :A7], [:A7, :A8], [:A8, :A1],
+        ];
+    )
+
+    println(fractional_hypertree_width(H))
+    println(submodular_width(H))
 end
 
 end
