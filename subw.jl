@@ -1081,7 +1081,7 @@ function test_pattern()
         ]
     )
 
-    println(fractional_hypertree_width(H))  # ???
+    println(fractional_hypertree_width(H))  # 3.0
     println(submodular_width(H))            # ???
 end
 
