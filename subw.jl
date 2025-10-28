@@ -1070,4 +1070,19 @@ function test_octahedron()
     println(submodular_width(H))            # 2.5
 end
 
+function test_pattern()
+    H = Hypergraph(
+        [:A, :B, :C, :D, :E, :X1, :X2, :X3, :Y1, :Y2, :Y3],
+        [
+            [:A, :B], [:B, :C], [:C, :D], [:D, :E], [:E, :A],
+            [:A, :X1], [:A, :X2], [:X1, :X3], [:X2, :X3],
+            [:C, :Y1], [:C, :Y2], [:Y1, :Y3], [:Y2, :Y3],
+            [:X3, :Y3]
+        ]
+    )
+
+    println(fractional_hypertree_width(H))  # ???
+    println(submodular_width(H))            # ???
+end
+
 end
