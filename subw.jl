@@ -1057,4 +1057,17 @@ function test_pentagonal_prism()
     # println(submodular_width(H))          # ???
 end
 
+function test_octahedron()
+    H = Hypergraph(
+        [:A1, :A2, :A3, :A4, :A5, :A6],
+        [
+            [:A1, :A2], [:A2, :A3], [:A3, :A4], [:A4, :A5], [:A5, :A6], [:A6, :A1],
+            [:A1, :A3], [:A2, :A4], [:A3, :A5], [:A4, :A6], [:A5, :A1], [:A6, :A2],
+        ]
+    )
+
+    println(fractional_hypertree_width(H))  # 2.5
+    println(submodular_width(H))            # 2.5
+end
+
 end
